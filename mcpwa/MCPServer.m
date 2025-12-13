@@ -264,6 +264,29 @@ static NSString * const kServerVersion = @"1.0.0";
                 },
                 @"required": @[@"message"]
             }
+        },
+        @{
+            @"name": @"whatsapp_search",
+            @"description": @"Global search across all WhatsApp chats. Searches for keywords in chat names and message content. Returns two lists: chats whose names match the query, and individual messages containing the query text.",
+            @"inputSchema": @{
+                @"type": @"object",
+                @"properties": @{
+                    @"query": @{
+                        @"type": @"string",
+                        @"description": @"Search query - keywords to find in chat names and message content"
+                    }
+                },
+                @"required": @[@"query"]
+            }
+        },
+        @{
+            @"name": @"whatsapp_clear_search",
+            @"description": @"Clear the search field and return to normal chat list view.",
+            @"inputSchema": @{
+                @"type": @"object",
+                @"properties": @{},
+                @"required": @[]
+            }
         }
     ];
     
@@ -295,6 +318,10 @@ static NSString * const kServerVersion = @"1.0.0";
         [self toolFindChat:args[@"name"] id:requestId];
     } else if ([toolName isEqualToString:@"whatsapp_send_message"]) {
         [self toolSendMessage:args[@"message"] id:requestId];
+    } else if ([toolName isEqualToString:@"whatsapp_search"]) {
+        [self toolGlobalSearch:args[@"query"] id:requestId];
+    } else if ([toolName isEqualToString:@"whatsapp_clear_search"]) {
+        [self toolClearSearch:requestId];
     } else {
         [self sendToolError:[NSString stringWithFormat:@"Unknown tool: %@", toolName] id:requestId];
     }
@@ -502,6 +529,66 @@ static NSString * const kServerVersion = @"1.0.0";
     }
 }
 
+- (void)toolGlobalSearch:(NSString *)query id:(id)requestId {
+    if (![self checkPrerequisites:requestId]) return;
+    
+    if (!query || query.length == 0) {
+        [self sendToolError:@"Search query is required" id:requestId];
+        return;
+    }
+    
+    [self log:[NSString stringWithFormat:@"   Searching: %@", query] color:NSColor.systemGrayColor];
+    
+    WAAccessibility *wa = [WAAccessibility shared];
+    WASearchResults *results = [wa globalSearch:query];
+    
+    if (!results) {
+        [self sendToolError:@"Search failed - could not access search field" id:requestId];
+        return;
+    }
+    
+    // Convert chat matches to dictionaries
+    NSMutableArray *chatDicts = [NSMutableArray arrayWithCapacity:results.chatMatches.count];
+    for (WASearchChatResult *chat in results.chatMatches) {
+        [chatDicts addObject:[self searchChatResultToDictionary:chat]];
+    }
+    
+    // Convert message matches to dictionaries
+    NSMutableArray *msgDicts = [NSMutableArray arrayWithCapacity:results.messageMatches.count];
+    for (WASearchMessageResult *msg in results.messageMatches) {
+        [msgDicts addObject:[self searchMessageResultToDictionary:msg]];
+    }
+    
+    NSDictionary *result = @{
+        @"query": results.query,
+        @"chatMatchCount": @(results.chatMatches.count),
+        @"messageMatchCount": @(results.messageMatches.count),
+        @"chatMatches": chatDicts,
+        @"messageMatches": msgDicts
+    };
+    
+    [self log:[NSString stringWithFormat:@"   Found %lu chats, %lu messages", 
+               (unsigned long)results.chatMatches.count, 
+               (unsigned long)results.messageMatches.count]
+        color:NSColor.greenColor];
+    [self sendToolResult:[self jsonStringPretty:result] id:requestId];
+}
+
+- (void)toolClearSearch:(id)requestId {
+    if (![self checkPrerequisites:requestId]) return;
+    
+    WAAccessibility *wa = [WAAccessibility shared];
+    BOOL success = [wa clearSearch];
+    
+    if (success) {
+        [self log:@"   Search cleared" color:NSColor.greenColor];
+        [self sendToolResult:@"Search cleared" id:requestId];
+    } else {
+        [self log:@"   No active search to clear" color:NSColor.yellowColor];
+        [self sendToolResult:@"No active search to clear" id:requestId];
+    }
+}
+
 #pragma mark - Data Conversion Helpers
 
 - (NSDictionary *)chatToDictionary:(WAChat *)chat {
@@ -548,6 +635,26 @@ static NSString * const kServerVersion = @"1.0.0";
     }
     if (msg.reactions.count > 0) {
         dict[@"reactions"] = msg.reactions;
+    }
+    
+    return dict;
+}
+
+- (NSDictionary *)searchChatResultToDictionary:(WASearchChatResult *)chat {
+    return @{
+        @"chatName": chat.chatName ?: @"",
+        @"lastMessagePreview": chat.lastMessagePreview ?: @""
+    };
+}
+
+- (NSDictionary *)searchMessageResultToDictionary:(WASearchMessageResult *)msg {
+    NSMutableDictionary *dict = [NSMutableDictionary dictionaryWithDictionary:@{
+        @"chatName": msg.chatName ?: @"",
+        @"messagePreview": msg.messagePreview ?: @""
+    }];
+    
+    if (msg.sender) {
+        dict[@"sender"] = msg.sender;
     }
     
     return dict;

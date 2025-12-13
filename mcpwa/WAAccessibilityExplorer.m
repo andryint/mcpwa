@@ -248,14 +248,14 @@ static NSFileHandle *outputHandle = nil;
     
     // 1. Full tree overview
     [self log:@"\n### FULL TREE (depth=6) ###\n"];
-    [self dumpTree:app maxDepth:6];
+    [self dumpTree:app maxDepth:20];
     
     // 2. Windows
     [self log:@"\n### WINDOWS ###"];
     NSMutableArray *windows = [NSMutableArray array];
     [self findElements:app predicate:^BOOL(AXUIElementRef elem, NSString *role, int depth) {
         return [role isEqualToString:@"AXWindow"];
-    } maxDepth:2 results:windows];
+    } maxDepth:20 results:windows];
     
     for (NSDictionary *w in windows) {
         AXUIElementRef win = (__bridge AXUIElementRef)w[@"element"];
@@ -269,7 +269,7 @@ static NSFileHandle *outputHandle = nil;
     NSMutableArray *buttons = [NSMutableArray array];
     [self findElements:app predicate:^BOOL(AXUIElementRef elem, NSString *role, int depth) {
         return [role isEqualToString:@"AXButton"];
-    } maxDepth:15 results:buttons];
+    } maxDepth:25 results:buttons];
     
     [self log:@"Found %lu buttons", (unsigned long)buttons.count];
     
@@ -296,7 +296,7 @@ static NSFileHandle *outputHandle = nil;
     NSMutableArray *textAreas = [NSMutableArray array];
     [self findElements:app predicate:^BOOL(AXUIElementRef elem, NSString *role, int depth) {
         return [role isEqualToString:@"AXTextArea"] || [role isEqualToString:@"AXTextField"];
-    } maxDepth:15 results:textAreas];
+    } maxDepth:25 results:textAreas];
     
     for (NSDictionary *t in textAreas) {
         AXUIElementRef ta = (__bridge AXUIElementRef)t[@"element"];
@@ -311,7 +311,7 @@ static NSFileHandle *outputHandle = nil;
     NSMutableArray *staticTexts = [NSMutableArray array];
     [self findElements:app predicate:^BOOL(AXUIElementRef elem, NSString *role, int depth) {
         return [role isEqualToString:@"AXStaticText"];
-    } maxDepth:15 results:staticTexts];
+    } maxDepth:25 results:staticTexts];
     
     [self log:@"Found %lu static text elements", (unsigned long)staticTexts.count];
     
@@ -332,7 +332,7 @@ static NSFileHandle *outputHandle = nil;
         if (![role isEqualToString:@"AXGroup"]) return NO;
         NSString *ident = [WAAccessibilityExplorer identifierOfElement:elem];
         return ident != nil;
-    } maxDepth:15 results:groups];
+    } maxDepth:25 results:groups];
     
     int grpIdx = 0;
     for (NSDictionary *g in groups) {
@@ -376,7 +376,7 @@ static NSFileHandle *outputHandle = nil;
         if (![role isEqualToString:@"AXGenericElement"]) return NO;
         NSString *desc = [WAAccessibilityExplorer descriptionOfElement:elem];
         return desc.length > 0;
-    } maxDepth:15 results:generics];
+    } maxDepth:25 results:generics];
     
     [self log:@"Found %lu generic elements with descriptions", (unsigned long)generics.count];
     
@@ -415,7 +415,7 @@ static NSFileHandle *outputHandle = nil;
     if (windows.count > 0) {
         AXUIElementRef firstWindow = (__bridge AXUIElementRef)windows[0][@"element"];
         [self log:@"\n### FIRST WINDOW DEEP TREE (depth=12) ###\n"];
-        [self dumpTree:firstWindow maxDepth:12];
+        [self dumpTree:firstWindow maxDepth:22];
     }
     
     [self log:@"\n%@", [@"" stringByPaddingToLength:60 withString:@"=" startingAtIndex:0]];
@@ -445,6 +445,8 @@ static NSFileHandle *outputHandle = nil;
 }
 
 + (void)exploreToFile:(NSString *)path {
+    [NSThread sleepForTimeInterval:5.0];
+    
     [[NSFileManager defaultManager] createFileAtPath:path contents:nil attributes:nil];
     outputHandle = [NSFileHandle fileHandleForWritingAtPath:path];
     

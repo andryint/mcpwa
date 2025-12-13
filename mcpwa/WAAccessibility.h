@@ -45,6 +45,28 @@ typedef NS_ENUM(NSInteger, WAMessageDirection) {
 @property (nonatomic, strong) NSArray<WAMessage *> *messages;
 @end
 
+#pragma mark - Search Result Models
+
+/// A chat that matches the search query (by name)
+@interface WASearchChatResult : NSObject
+@property (nonatomic, copy) NSString *chatName;
+@property (nonatomic, copy, nullable) NSString *lastMessagePreview;
+@end
+
+/// A message that matches the search query (by content)
+@interface WASearchMessageResult : NSObject
+@property (nonatomic, copy) NSString *chatName;
+@property (nonatomic, copy, nullable) NSString *sender;
+@property (nonatomic, copy) NSString *messagePreview;
+@end
+
+/// Combined search results
+@interface WASearchResults : NSObject
+@property (nonatomic, copy) NSString *query;
+@property (nonatomic, strong) NSArray<WASearchChatResult *> *chatMatches;
+@property (nonatomic, strong) NSArray<WASearchMessageResult *> *messageMatches;
+@end
+
 #pragma mark - Main Class
 
 @interface WAAccessibility : NSObject
@@ -83,12 +105,21 @@ typedef NS_ENUM(NSInteger, WAMessageDirection) {
 /// Get messages with limit
 - (NSArray<WAMessage *> *)getMessagesWithLimit:(NSInteger)limit;
 
+#pragma mark - Global Search
+
+/// Perform a global search across all chats and messages
+/// Returns both chat name matches and message content matches
+- (nullable WASearchResults *)globalSearch:(NSString *)query;
+
+/// Clear the search field and return to normal chat list view
+- (BOOL)clearSearch;
+
 #pragma mark - Actions
 
 /// Send a message to the current chat
 - (BOOL)sendMessage:(NSString *)message;
 
-/// Search within WhatsApp
+/// Search within WhatsApp (just enters query, use globalSearch for results)
 - (BOOL)searchFor:(NSString *)query;
 
 #pragma mark - Navigation

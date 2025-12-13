@@ -114,6 +114,9 @@
     [self.window makeKeyAndOrderFront:nil];
     [NSApp activateIgnoringOtherApps:YES];
     
+    // Create Debug menu
+    [self setupDebugMenu];
+    
     // Welcome message
     [self appendLog:@"╔══════════════════════════════════════════════════════════════╗" color:NSColor.cyanColor];
     [self appendLog:@"║           WhatsAppMCP Server v1.0                            ║" color:NSColor.cyanColor];
@@ -317,13 +320,207 @@
 
 #pragma mark - Debug Actions (connect to menu items if desired)
 
+- (void)setupDebugMenu {
+    // Create Debug menu
+    NSMenu *debugMenu = [[NSMenu alloc] initWithTitle:@"Debug"];
+    
+    // Search tests
+    NSMenuItem *searchItem = [debugMenu addItemWithTitle:@"Test Search \"SCB\"" 
+                                                  action:@selector(testGlobalSearch:) 
+                                           keyEquivalent:@"s"];
+    searchItem.keyEquivalentModifierMask = NSEventModifierFlagCommand | NSEventModifierFlagShift;
+    searchItem.target = self;
+    
+    NSMenuItem *customSearchItem = [debugMenu addItemWithTitle:@"Test Search Custom..." 
+                                                        action:@selector(testGlobalSearchCustom:) 
+                                                 keyEquivalent:@"f"];
+    customSearchItem.keyEquivalentModifierMask = NSEventModifierFlagCommand | NSEventModifierFlagShift;
+    customSearchItem.target = self;
+    
+    NSMenuItem *clearItem = [debugMenu addItemWithTitle:@"Clear Search" 
+                                                 action:@selector(testClearSearch:) 
+                                          keyEquivalent:@""];
+    clearItem.target = self;
+    
+    [debugMenu addItem:[NSMenuItem separatorItem]];
+    
+    // Input method tests
+    NSMenuItem *clipboardItem = [debugMenu addItemWithTitle:@"Test Clipboard Paste (SCB)" 
+                                                     action:@selector(testClipboardPaste:) 
+                                              keyEquivalent:@""];
+    clipboardItem.target = self;
+    
+    NSMenuItem *typingItem = [debugMenu addItemWithTitle:@"Test Character Typing (SCB)" 
+                                                  action:@selector(testCharacterTyping:) 
+                                           keyEquivalent:@""];
+    typingItem.target = self;
+    
+    [debugMenu addItem:[NSMenuItem separatorItem]];
+    
+    // Other tests
+    NSMenuItem *allTestsItem = [debugMenu addItemWithTitle:@"Run All Tests" 
+                                                    action:@selector(runTests:) 
+                                             keyEquivalent:@"t"];
+    allTestsItem.keyEquivalentModifierMask = NSEventModifierFlagCommand | NSEventModifierFlagShift;
+    allTestsItem.target = self;
+    
+    NSMenuItem *exploreItem = [debugMenu addItemWithTitle:@"Explore AX Hierarchy" 
+                                                   action:@selector(explore:) 
+                                            keyEquivalent:@""];
+    exploreItem.target = self;
+    
+    [debugMenu addItem:[NSMenuItem separatorItem]];
+    
+    // Status
+    NSMenuItem *statusItem = [debugMenu addItemWithTitle:@"Check Status" 
+                                                  action:@selector(checkPermissions:) 
+                                           keyEquivalent:@""];
+    statusItem.target = self;
+    
+    // Add to main menu
+    NSMenuItem *debugMenuItem = [[NSMenuItem alloc] initWithTitle:@"Debug" action:nil keyEquivalent:@""];
+    [debugMenuItem setSubmenu:debugMenu];
+    [[NSApp mainMenu] addItem:debugMenuItem];
+}
+
+- (IBAction)testGlobalSearch:(id)sender {
+    [self runGlobalSearchTest:@"SCB"];
+}
+
+- (IBAction)testGlobalSearchCustom:(id)sender {
+    // Show input dialog
+    NSAlert *alert = [[NSAlert alloc] init];
+    alert.messageText = @"Global Search Test";
+    alert.informativeText = @"Enter search query:";
+    alert.alertStyle = NSAlertStyleInformational;
+    [alert addButtonWithTitle:@"Search"];
+    [alert addButtonWithTitle:@"Cancel"];
+    
+    NSTextField *input = [[NSTextField alloc] initWithFrame:NSMakeRect(0, 0, 200, 24)];
+    input.stringValue = @"";
+    input.placeholderString = @"Enter search term...";
+    alert.accessoryView = input;
+    
+    // Make input first responder
+    [alert.window setInitialFirstResponder:input];
+    
+    if ([alert runModal] == NSAlertFirstButtonReturn) {
+        NSString *query = input.stringValue;
+        if (query.length > 0) {
+            [self runGlobalSearchTest:query];
+        }
+    }
+}
+
+- (void)runGlobalSearchTest:(NSString *)query {
+    [self appendLog:[NSString stringWithFormat:@"🔍 Testing globalSearch: \"%@\"", query] color:NSColor.cyanColor];
+    
+    dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
+        WAAccessibility *wa = [WAAccessibility shared];
+        
+        if (![wa isWhatsAppAvailable]) {
+            dispatch_async(dispatch_get_main_queue(), ^{
+                [self appendLog:@"  ✗ WhatsApp not available" color:NSColor.redColor];
+            });
+            return;
+        }
+        
+        NSDate *startTime = [NSDate date];
+        WASearchResults *results = [wa globalSearch:query];
+        NSTimeInterval elapsed = [[NSDate date] timeIntervalSinceDate:startTime];
+        
+        dispatch_async(dispatch_get_main_queue(), ^{
+            [self appendLog:[NSString stringWithFormat:@"  Completed in %.2f seconds", elapsed]];
+            
+            if (!results) {
+                [self appendLog:@"  ✗ Search returned nil" color:NSColor.redColor];
+                return;
+            }
+            
+            [self appendLog:[NSString stringWithFormat:@"  Chat matches: %lu", (unsigned long)results.chatMatches.count] 
+                      color:NSColor.greenColor];
+            [self appendLog:[NSString stringWithFormat:@"  Message matches: %lu", (unsigned long)results.messageMatches.count]
+                      color:NSColor.greenColor];
+            
+            // Show chat matches
+            if (results.chatMatches.count > 0) {
+                [self appendLog:@"  --- Chats ---" color:NSColor.systemGrayColor];
+                for (WASearchChatResult *chat in results.chatMatches) {
+                    [self appendLog:[NSString stringWithFormat:@"    📁 %@", chat.chatName]];
+                }
+            }
+            
+            // Show message matches
+            if (results.messageMatches.count > 0) {
+                [self appendLog:@"  --- Messages ---" color:NSColor.systemGrayColor];
+                for (WASearchMessageResult *msg in results.messageMatches) {
+                    NSString *preview = msg.messagePreview.length > 50 ?
+                        [[msg.messagePreview substringToIndex:50] stringByAppendingString:@"..."] :
+                        msg.messagePreview;
+                    [self appendLog:[NSString stringWithFormat:@"    💬 [%@] %@: %@", 
+                                    msg.chatName, msg.sender ?: @"You", preview]];
+                }
+            }
+            
+            if (results.chatMatches.count == 0 && results.messageMatches.count == 0) {
+                [self appendLog:@"  ⚠️ No results found" color:NSColor.yellowColor];
+                [self appendLog:@"     Check: Is search text actually entered in WhatsApp?" color:NSColor.systemGrayColor];
+            }
+            
+            [self appendLog:@""];
+        });
+    });
+}
+
+- (IBAction)testClearSearch:(id)sender {
+    [self appendLog:@"🧹 Clearing search..." color:NSColor.cyanColor];
+    
+    dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
+        WAAccessibility *wa = [WAAccessibility shared];
+        BOOL success = [wa clearSearch];
+        
+        dispatch_async(dispatch_get_main_queue(), ^{
+            [self appendLog:[NSString stringWithFormat:@"  Result: %@", success ? @"✓ Cleared" : @"✗ Failed"]
+                      color:success ? NSColor.greenColor : NSColor.redColor];
+            [self appendLog:@""];
+        });
+    });
+}
+
+- (IBAction)testClipboardPaste:(id)sender {
+    [self appendLog:@"📋 Testing Clipboard Paste..." color:NSColor.cyanColor];
+    
+    dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
+        [WAAccessibilityTest testClipboardPaste:@"SCB"];
+        
+        dispatch_async(dispatch_get_main_queue(), ^{
+            [self appendLog:@"  Done - check WhatsApp and Console.app for results" color:NSColor.greenColor];
+            [self appendLog:@""];
+        });
+    });
+}
+
+- (IBAction)testCharacterTyping:(id)sender {
+    [self appendLog:@"⌨️ Testing Character Typing..." color:NSColor.cyanColor];
+    
+    dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
+        [WAAccessibilityTest testCharacterTyping:@"SCB"];
+        
+        dispatch_async(dispatch_get_main_queue(), ^{
+            [self appendLog:@"  Done - check WhatsApp and Console.app for results" color:NSColor.greenColor];
+            [self appendLog:@""];
+        });
+    });
+}
+
 - (IBAction)explore:(id)sender {
     [self appendLog:@"Running AX Explorer..." color:NSColor.cyanColor];
     dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
-        [WAAccessibilityExplorer exploreToFile:@"~/Adhoc/whatsapp_ax.txt"];
+        NSString *path = [@"~/Desktop/whatsapp_ax.txt" stringByExpandingTildeInPath];
+        [WAAccessibilityExplorer exploreToFile:path];
         dispatch_async(dispatch_get_main_queue(), ^{
-            [self appendLog:@"Explorer complete - saved to ~/Adhoc/whatsapp_ax.txt" color:NSColor.greenColor];
-            [[NSWorkspace sharedWorkspace] openFile:@"~/Adhoc/whatsapp_ax.txt"];
+            [self appendLog:[NSString stringWithFormat:@"Explorer complete - saved to %@", path] color:NSColor.greenColor];
+            [[NSWorkspace sharedWorkspace] openFile:path];
         });
     });
 }

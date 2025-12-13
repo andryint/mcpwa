@@ -27,6 +27,25 @@
 @implementation WACurrentChat
 @end
 
+@implementation WASearchChatResult
+- (NSString *)description {
+    return [NSString stringWithFormat:@"<WASearchChatResult: %@>", self.chatName];
+}
+@end
+
+@implementation WASearchMessageResult
+- (NSString *)description {
+    return [NSString stringWithFormat:@"<WASearchMessageResult: %@ in %@>", self.messagePreview, self.chatName];
+}
+@end
+
+@implementation WASearchResults
+- (NSString *)description {
+    return [NSString stringWithFormat:@"<WASearchResults: query='%@' chats=%lu messages=%lu>", 
+            self.query, (unsigned long)self.chatMatches.count, (unsigned long)self.messageMatches.count];
+}
+@end
+
 #pragma mark - WAAccessibility
 
 @interface WAAccessibility ()
@@ -57,11 +76,16 @@
 - (NSString *)cleanString:(NSString *)str {
     if (!str) return nil;
     
-    // Remove LTR mark (U+200E) and other direction marks
+    // Remove various Unicode direction and formatting marks
     NSMutableString *clean = [str mutableCopy];
-    [clean replaceOccurrencesOfString:@"\u200E" withString:@"" options:0 range:NSMakeRange(0, clean.length)];
-    [clean replaceOccurrencesOfString:@"\u200F" withString:@"" options:0 range:NSMakeRange(0, clean.length)];
-    [clean replaceOccurrencesOfString:@"\u200B" withString:@"" options:0 range:NSMakeRange(0, clean.length)];
+    [clean replaceOccurrencesOfString:@"\u200E" withString:@"" options:0 range:NSMakeRange(0, clean.length)]; // LTR mark
+    [clean replaceOccurrencesOfString:@"\u200F" withString:@"" options:0 range:NSMakeRange(0, clean.length)]; // RTL mark
+    [clean replaceOccurrencesOfString:@"\u200B" withString:@"" options:0 range:NSMakeRange(0, clean.length)]; // Zero-width space
+    [clean replaceOccurrencesOfString:@"\u2068" withString:@"" options:0 range:NSMakeRange(0, clean.length)]; // First strong isolate
+    [clean replaceOccurrencesOfString:@"\u2069" withString:@"" options:0 range:NSMakeRange(0, clean.length)]; // Pop directional isolate
+    [clean replaceOccurrencesOfString:@"\u202A" withString:@"" options:0 range:NSMakeRange(0, clean.length)]; // Left-to-right embedding
+    [clean replaceOccurrencesOfString:@"\u202C" withString:@"" options:0 range:NSMakeRange(0, clean.length)]; // Pop directional formatting
+    [clean replaceOccurrencesOfString:@"\u00A0" withString:@" " options:0 range:NSMakeRange(0, clean.length)]; // Non-breaking space -> space
     
     return [clean stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
 }
@@ -286,7 +310,20 @@
     
     for (NSRunningApplication *app in apps) {
         if ([app.bundleIdentifier isEqualToString:@"net.whatsapp.WhatsApp"]) {
-            return [app activateWithOptions:NSApplicationActivateIgnoringOtherApps];
+            BOOL activated = [app activateWithOptions:NSApplicationActivateIgnoringOtherApps];
+            
+            if (activated) {
+                // Wait until WhatsApp is actually frontmost (up to 1 second)
+                for (int i = 0; i < 20; i++) {
+                    [NSThread sleepForTimeInterval:0.05];
+                    if ([app isActive]) {
+                        // Extra delay to ensure window is ready for keyboard input
+                        [NSThread sleepForTimeInterval:0.15];
+                        return YES;
+                    }
+                }
+            }
+            return activated;
         }
     }
     
@@ -398,29 +435,14 @@
     
     // Check if it contains "Received" - indicates unread potentially
     // (This is a heuristic - WhatsApp doesn't clearly expose unread state)
-    
-    // Try to extract timestamp - look for patterns like "12:23" or "6Decemberat"
-    NSRegularExpression *timeRegex = [NSRegularExpression regularExpressionWithPattern:@"(\\d{1,2}:\\d{2})" options:0 error:nil];
-    NSTextCheckingResult *match = [timeRegex firstMatchInString:value options:0 range:NSMakeRange(0, value.length)];
-    if (match) {
-        chat.timestamp = [value substringWithRange:match.range];
-    }
 }
 
 - (WAChat *)findChatWithName:(NSString *)name {
     NSArray<WAChat *> *chats = [self getChats];
-    NSString *lowercaseName = [name lowercaseString];
+    NSString *lowerName = [name lowercaseString];
     
-    // First try exact match
     for (WAChat *chat in chats) {
-        if ([[chat.name lowercaseString] isEqualToString:lowercaseName]) {
-            return chat;
-        }
-    }
-    
-    // Then try contains match
-    for (WAChat *chat in chats) {
-        if ([[chat.name lowercaseString] containsString:lowercaseName]) {
+        if ([[chat.name lowercaseString] containsString:lowerName]) {
             return chat;
         }
     }
@@ -429,28 +451,27 @@
 }
 
 - (BOOL)openChat:(WAChat *)chat {
+    if (!chat) return NO;
+    
     AXUIElementRef window = [self getMainWindow];
     if (!window) return NO;
     
     BOOL result = NO;
     
-    // Find the specific chat button (returns retained elements)
+    // Find the button for this chat by matching description (name)
     NSArray *buttons = [self findElementsIn:window predicate:^BOOL(AXUIElementRef element, NSString *role, NSString *identifier) {
-        return [role isEqualToString:@"AXButton"] && 
-               [identifier hasPrefix:@"ChatSessionCell_"];
+        if (![role isEqualToString:@"AXButton"] || ![identifier hasPrefix:@"ChatSessionCell_"]) {
+            return NO;
+        }
+        NSString *desc = [self descriptionOfElement:element];
+        return desc && [desc isEqualToString:chat.name];
     } maxDepth:15];
     
-    for (id btn in buttons) {
-        AXUIElementRef button = (__bridge AXUIElementRef)btn;
-        NSString *desc = [self descriptionOfElement:button];
-        
-        if ([desc isEqualToString:chat.name]) {
-            result = [self pressElement:button];
-            break;
-        }
+    if (buttons.count > 0) {
+        result = [self pressElement:(__bridge AXUIElementRef)buttons[0]];
     }
     
-    // Release all elements in the buttons array
+    // Release all found elements
     for (id btn in buttons) {
         CFRelease((__bridge AXUIElementRef)btn);
     }
@@ -461,10 +482,8 @@
 
 - (BOOL)openChatWithName:(NSString *)name {
     WAChat *chat = [self findChatWithName:name];
-    if (chat) {
-        return [self openChat:chat];
-    }
-    return NO;
+    if (!chat) return NO;
+    return [self openChat:chat];
 }
 
 #pragma mark - Current Chat
@@ -473,102 +492,128 @@
     AXUIElementRef window = [self getMainWindow];
     if (!window) return nil;
     
-    // Find the header with NavigationBar_HeaderViewButton
-    AXUIElementRef header = [self findElementWithIdentifier:@"NavigationBar_HeaderViewButton" inElement:window];
-    if (!header) {
-        CFRelease(window);
-        return nil;
+    WACurrentChat *currentChat = nil;
+    
+    // Find the toolbar that shows current chat info
+    // Look for AXHeading with chat name description
+    AXUIElementRef chatHeader = [self findFirstElementIn:window predicate:^BOOL(AXUIElementRef element, NSString *role, NSString *identifier) {
+        if (![role isEqualToString:@"AXGroup"]) return NO;
+        // The chat header group contains the name as a button
+        NSString *desc = [self descriptionOfElement:element];
+        return desc && [desc containsString:@"last seen"];
+    } maxDepth:15];
+    
+    if (chatHeader) {
+        currentChat = [[WACurrentChat alloc] init];
+        
+        // Try to find the name in the header area
+        AXUIElementRef nameElement = [self findFirstElementIn:chatHeader predicate:^BOOL(AXUIElementRef element, NSString *role, NSString *identifier) {
+            return [role isEqualToString:@"AXStaticText"] || [role isEqualToString:@"AXButton"];
+        } maxDepth:5];
+        
+        if (nameElement) {
+            currentChat.name = [self descriptionOfElement:nameElement] ?: [self valueOfElement:nameElement];
+            CFRelease(nameElement);
+        }
+        
+        currentChat.lastSeen = [self descriptionOfElement:chatHeader];
+        currentChat.messages = [self getMessages];
+        
+        CFRelease(chatHeader);
+    } else {
+        // Alternative approach: look for the conversation view elements
+        currentChat = [[WACurrentChat alloc] init];
+        currentChat.messages = [self getMessages];
+        
+        // Try to get name from different location
+        AXUIElementRef nameButton = [self findFirstElementIn:window predicate:^BOOL(AXUIElementRef element, NSString *role, NSString *identifier) {
+            return [identifier isEqualToString:@"ConversationDetailsView_NameButton"];
+        } maxDepth:15];
+        
+        if (nameButton) {
+            currentChat.name = [self descriptionOfElement:nameButton];
+            CFRelease(nameButton);
+        }
     }
     
-    WACurrentChat *current = [[WACurrentChat alloc] init];
-    current.name = [self descriptionOfElement:header];
-    current.lastSeen = [self valueOfElement:header];
-    
-    CFRelease(header);  // Release retained header
-    
-    current.messages = [self getMessages];
-    
     CFRelease(window);
-    return current;
+    return currentChat;
 }
 
 - (NSArray<WAMessage *> *)getMessages {
-    return [self getMessagesWithLimit:100];
+    return [self getMessagesWithLimit:50];
 }
 
 - (NSArray<WAMessage *> *)getMessagesWithLimit:(NSInteger)limit {
     AXUIElementRef window = [self getMainWindow];
     if (!window) return @[];
     
-    // Find ChatMessagesTableView
-    AXUIElementRef messagesTable = [self findElementWithIdentifier:@"ChatMessagesTableView" inElement:window];
-    if (!messagesTable) {
-        CFRelease(window);
-        return @[];
-    }
-    
     NSMutableArray<WAMessage *> *messages = [NSMutableArray array];
-    NSMutableArray *allFoundElements = [NSMutableArray array];  // Track all found elements for release
+    NSMutableArray *allFoundElements = [NSMutableArray array]; // Track for cleanup
     
     @try {
-        // Find all message bubbles
-        NSArray *bubbles = [self findElementsIn:messagesTable predicate:^BOOL(AXUIElementRef element, NSString *role, NSString *identifier) {
-            return identifier && [identifier isEqualToString:@"WAMessageBubbleTableViewCell"];
-        } maxDepth:5];
-        [allFoundElements addObjectsFromArray:bubbles];
+        // Find the messages table/list
+        AXUIElementRef messagesTable = [self findFirstElementIn:window predicate:^BOOL(AXUIElementRef element, NSString *role, NSString *identifier) {
+            return [identifier isEqualToString:@"ConversationTableView"];
+        } maxDepth:15];
         
-        for (id bubble in bubbles) {
-            if (messages.count >= limit) break;
-            if (!bubble || bubble == [NSNull null]) continue;
+        if (!messagesTable) {
+            CFRelease(window);
+            return @[];
+        }
+        
+        // Find message groups within the table
+        NSArray *messageGroups = [self findElementsIn:messagesTable predicate:^BOOL(AXUIElementRef element, NSString *role, NSString *identifier) {
+            // Look for the message row groups
+            return [identifier hasPrefix:@"ConversationMessageCell_"] || 
+                   [identifier isEqualToString:@"ConversationSystemMessageCell"];
+        } maxDepth:10];
+        [allFoundElements addObjectsFromArray:messageGroups];
+        
+        // If that doesn't work, try finding AXGroup elements with message descriptions
+        if (messageGroups.count == 0) {
+            messageGroups = [self findElementsIn:messagesTable predicate:^BOOL(AXUIElementRef element, NSString *role, NSString *identifier) {
+                if (![role isEqualToString:@"AXGroup"]) return NO;
+                NSString *desc = [self descriptionOfElement:element];
+                // Messages have descriptions starting with "message," or "Your message,"
+                return desc && ([desc hasPrefix:@"message,"] || 
+                               [desc hasPrefix:@"Your message,"] ||
+                               [desc hasPrefix:@"Replying to"]);
+            } maxDepth:10];
+            [allFoundElements addObjectsFromArray:messageGroups];
+        }
+        
+        NSInteger count = 0;
+        for (id grp in messageGroups) {
+            if (count >= limit) break;
             
-            AXUIElementRef bubbleElement = (__bridge AXUIElementRef)bubble;
-            if (!bubbleElement) continue;
+            AXUIElementRef group = (__bridge AXUIElementRef)grp;
+            NSString *desc = [self descriptionOfElement:group];
             
-            // Validate bubble is still valid
-            CFTypeRef testVal = NULL;
-            if (AXUIElementCopyAttributeValue(bubbleElement, kAXRoleAttribute, &testVal) != kAXErrorSuccess) {
-                continue;  // Element is stale
-            }
-            if (testVal) CFRelease(testVal);
-            
-            // Find the AXGenericElement inside with the message content
-            NSArray *generics = [self findElementsIn:bubbleElement predicate:^BOOL(AXUIElementRef element, NSString *role, NSString *identifier) {
-                return role && [role isEqualToString:@"AXGenericElement"];
-            } maxDepth:3];
-            [allFoundElements addObjectsFromArray:generics];
-            
-            for (id gen in generics) {
-                if (!gen || gen == [NSNull null]) continue;
-                
-                AXUIElementRef generic = (__bridge AXUIElementRef)gen;
-                if (!generic) continue;
-                
-                NSString *desc = [self descriptionOfElement:generic];
-                
-                if (desc.length > 0) {
-                    WAMessage *message = [self parseMessageDescription:desc];
-                    if (message) {
-                        // Check for reactions in the same bubble
-                        NSArray *reactionButtons = [self findElementsIn:bubbleElement predicate:^BOOL(AXUIElementRef element, NSString *role, NSString *identifier) {
-                            return identifier && [identifier isEqualToString:@"WAMessageReactionsSliceView"];
-                        } maxDepth:3];
-                        [allFoundElements addObjectsFromArray:reactionButtons];
-                        
-                        if (reactionButtons.count > 0) {
-                            NSMutableArray *reactions = [NSMutableArray array];
-                            for (id rb in reactionButtons) {
-                                if (!rb || rb == [NSNull null]) continue;
-                                NSString *reactionDesc = [self descriptionOfElement:(__bridge AXUIElementRef)rb];
-                                // Format: "Reaction: 👍"
-                                if (reactionDesc && [reactionDesc hasPrefix:@"Reaction: "]) {
-                                    [reactions addObject:[reactionDesc substringFromIndex:10]];
-                                }
+            if (desc) {
+                WAMessage *message = [self parseMessageDescription:desc];
+                if (message && message.text.length > 0) {
+                    // Try to find reactions within this message group
+                    NSArray *reactionButtons = [self findElementsIn:group predicate:^BOOL(AXUIElementRef element, NSString *role, NSString *identifier) {
+                        return identifier && [identifier isEqualToString:@"WAMessageReactionsSliceView"];
+                    } maxDepth:3];
+                    [allFoundElements addObjectsFromArray:reactionButtons];
+                    
+                    if (reactionButtons.count > 0) {
+                        NSMutableArray *reactions = [NSMutableArray array];
+                        for (id rb in reactionButtons) {
+                            if (!rb || rb == [NSNull null]) continue;
+                            NSString *reactionDesc = [self descriptionOfElement:(__bridge AXUIElementRef)rb];
+                            // Format: "Reaction: 👍"
+                            if (reactionDesc && [reactionDesc hasPrefix:@"Reaction: "]) {
+                                [reactions addObject:[reactionDesc substringFromIndex:10]];
                             }
-                            message.reactions = reactions;
                         }
-                        
-                        [messages addObject:message];
+                        message.reactions = reactions;
                     }
+                    
+                    [messages addObject:message];
+                    count++;
                 }
             }
         }
@@ -583,7 +628,6 @@
         }
     }
     
-    CFRelease(messagesTable);  // Release retained messagesTable
     CFRelease(window);
     return messages;
 }
@@ -665,11 +709,307 @@
     return message;
 }
 
+#pragma mark - Keyboard Simulation
+
+- (void)pasteString:(NSString *)string {
+    // Save current clipboard contents
+    NSPasteboard *pasteboard = [NSPasteboard generalPasteboard];
+    NSArray *previousContents = [pasteboard readObjectsForClasses:@[[NSString class]] options:nil];
+    NSString *previousString = previousContents.firstObject;
+    
+    // Put our string on the clipboard
+    [pasteboard clearContents];
+    [pasteboard setString:string forType:NSPasteboardTypeString];
+    
+    // Small delay to ensure clipboard is ready
+    [NSThread sleepForTimeInterval:0.1];
+    
+    // Send Cmd+V to paste
+    CGEventSourceRef source = CGEventSourceCreate(kCGEventSourceStateHIDSystemState);
+    CGEventRef keyDown = CGEventCreateKeyboardEvent(source, 9, true);  // 9 = 'V' key
+    CGEventRef keyUp = CGEventCreateKeyboardEvent(source, 9, false);
+    CGEventSetFlags(keyDown, kCGEventFlagMaskCommand);
+    CGEventSetFlags(keyUp, kCGEventFlagMaskCommand);
+    CGEventPost(kCGHIDEventTap, keyDown);
+    [NSThread sleepForTimeInterval:0.05];
+    CGEventPost(kCGHIDEventTap, keyUp);
+    CFRelease(keyDown);
+    CFRelease(keyUp);
+    if (source) CFRelease(source);
+    
+    // Small delay for paste to complete
+    [NSThread sleepForTimeInterval:0.2];
+    
+    // Restore previous clipboard (optional, be nice to user)
+    if (previousString) {
+        [pasteboard clearContents];
+        [pasteboard setString:previousString forType:NSPasteboardTypeString];
+    }
+}
+
+- (void)pressKey:(CGKeyCode)keyCode withFlags:(CGEventFlags)flags {
+    CGEventSourceRef source = CGEventSourceCreate(kCGEventSourceStateHIDSystemState);
+    CGEventRef keyDown = CGEventCreateKeyboardEvent(source, keyCode, true);
+    CGEventRef keyUp = CGEventCreateKeyboardEvent(source, keyCode, false);
+    if (flags) {
+        CGEventSetFlags(keyDown, flags);
+        CGEventSetFlags(keyUp, flags);
+    }
+    CGEventPost(kCGHIDEventTap, keyDown);
+    [NSThread sleepForTimeInterval:0.05];
+    CGEventPost(kCGHIDEventTap, keyUp);
+    CFRelease(keyDown);
+    CFRelease(keyUp);
+    if (source) CFRelease(source);
+}
+
+- (void)pressKey:(CGKeyCode)keyCode withFlags:(CGEventFlags)flags toProcess:(pid_t)pid {
+    CGEventSourceRef source = CGEventSourceCreate(kCGEventSourceStateHIDSystemState);
+    CGEventRef keyDown = CGEventCreateKeyboardEvent(source, keyCode, true);
+    CGEventRef keyUp = CGEventCreateKeyboardEvent(source, keyCode, false);
+    if (flags) {
+        CGEventSetFlags(keyDown, flags);
+        CGEventSetFlags(keyUp, flags);
+    }
+    
+    // Post directly to target process - no focus stealing!
+    CGEventPostToPid(pid, keyDown);
+    [NSThread sleepForTimeInterval:0.05];
+    CGEventPostToPid(pid, keyUp);
+    
+    CFRelease(keyDown);
+    CFRelease(keyUp);
+    if (source) CFRelease(source);
+}
+
+- (void)typeString:(NSString *)string toProcess:(pid_t)pid {
+    CGEventSourceRef source = CGEventSourceCreate(kCGEventSourceStateHIDSystemState);
+    
+    for (NSUInteger i = 0; i < string.length; i++) {
+        unichar character = [string characterAtIndex:i];
+        
+        // Create key events with Unicode character
+        CGEventRef keyDown = CGEventCreateKeyboardEvent(source, 0, true);
+        CGEventRef keyUp = CGEventCreateKeyboardEvent(source, 0, false);
+        
+        // Set the Unicode string for this event
+        UniChar chars[1] = { character };
+        CGEventKeyboardSetUnicodeString(keyDown, 1, chars);
+        CGEventKeyboardSetUnicodeString(keyUp, 1, chars);
+        
+        // Post to target process
+        CGEventPostToPid(pid, keyDown);
+        [NSThread sleepForTimeInterval:0.03];
+        CGEventPostToPid(pid, keyUp);
+        [NSThread sleepForTimeInterval:0.03];
+        
+        CFRelease(keyDown);
+        CFRelease(keyUp);
+    }
+    
+    if (source) CFRelease(source);
+}
+
+#pragma mark - Global Search
+
+- (WASearchResults *)globalSearch:(NSString *)query {
+    if (!query || query.length == 0) return nil;
+    
+    AXUIElementRef window = [self getMainWindow];
+    if (!window) return nil;
+    
+    WASearchResults *results = [[WASearchResults alloc] init];
+    results.query = query;
+    results.chatMatches = @[];
+    results.messageMatches = @[];
+    
+    NSMutableArray<WASearchChatResult *> *chatMatches = [NSMutableArray array];
+    NSMutableArray<WASearchMessageResult *> *messageMatches = [NSMutableArray array];
+    NSMutableArray *allFoundElements = [NSMutableArray array]; // Track for cleanup
+    
+    @try {
+        // Get WhatsApp's PID for targeted key events (no focus stealing!)
+        pid_t waPid = self.whatsappPID;
+        if (waPid == 0) {
+            CFRelease(window);
+            return results;
+        }
+        
+        // 1. Clear any existing search by pressing Escape twice
+        [self pressKey:53 withFlags:0 toProcess:waPid];  // Escape
+        [NSThread sleepForTimeInterval:0.15];
+        [self pressKey:53 withFlags:0 toProcess:waPid];  // Escape again
+        [NSThread sleepForTimeInterval:0.2];
+        
+        // 2. Press Cmd+F to open search (sent directly to WhatsApp)
+        [self pressKey:3 withFlags:kCGEventFlagMaskCommand toProcess:waPid];  // F
+        [NSThread sleepForTimeInterval:0.5];
+        
+        // 3. Type query character by character (clipboard paste causes duplication)
+        [self typeString:query toProcess:waPid];
+        
+        // Re-get window
+        CFRelease(window);
+        window = [self getMainWindow];
+        if (!window) return results;
+        
+        // Wait for search results to populate
+        [NSThread sleepForTimeInterval:0.8];
+        
+        // Re-get window to refresh element tree
+        CFRelease(window);
+        window = [self getMainWindow];
+        if (!window) return results;
+        
+        // Sets for deduplication
+        NSMutableSet<NSString *> *seenChatNames = [NSMutableSet set];
+        NSMutableSet<NSString *> *seenMessageKeys = [NSMutableSet set];
+        
+        // 1. Find chat matches (ChatListSearchView_ChatResult)
+        NSArray *chatResults = [self findElementsIn:window predicate:^BOOL(AXUIElementRef element, NSString *role, NSString *identifier) {
+            return [identifier isEqualToString:@"ChatListSearchView_ChatResult"];
+        } maxDepth:15];
+        [allFoundElements addObjectsFromArray:chatResults];
+        
+        for (id chatBtn in chatResults) {
+            AXUIElementRef button = (__bridge AXUIElementRef)chatBtn;
+            
+            NSString *chatName = [self descriptionOfElement:button];
+            
+            // Skip duplicates
+            if (!chatName || [seenChatNames containsObject:chatName]) {
+                continue;
+            }
+            [seenChatNames addObject:chatName];
+            
+            WASearchChatResult *chatResult = [[WASearchChatResult alloc] init];
+            chatResult.chatName = chatName;
+            chatResult.lastMessagePreview = [self valueOfElement:button];
+            [chatMatches addObject:chatResult];
+        }
+        
+        // 2. Find message matches (ChatListSearchView_MessageResult)
+        NSArray *messageResults = [self findElementsIn:window predicate:^BOOL(AXUIElementRef element, NSString *role, NSString *identifier) {
+            return [identifier isEqualToString:@"ChatListSearchView_MessageResult"];
+        } maxDepth:15];
+        [allFoundElements addObjectsFromArray:messageResults];
+        
+        for (id msgGroup in messageResults) {
+            AXUIElementRef group = (__bridge AXUIElementRef)msgGroup;
+            
+            // The message info is in the child AXStaticText element's description
+            // Format: "ChatName, ⁨Sender⁩‎: ‎message preview..."
+            NSArray *textElements = [self findElementsIn:group predicate:^BOOL(AXUIElementRef element, NSString *role, NSString *identifier) {
+                return [role isEqualToString:@"AXStaticText"];
+            } maxDepth:3];
+            [allFoundElements addObjectsFromArray:textElements];
+            
+            for (id textElem in textElements) {
+                AXUIElementRef staticText = (__bridge AXUIElementRef)textElem;
+                NSString *desc = [self descriptionOfElement:staticText];
+                
+                // Skip duplicates (use description as unique key)
+                if (!desc || [seenMessageKeys containsObject:desc]) {
+                    continue;
+                }
+                [seenMessageKeys addObject:desc];
+                
+                WASearchMessageResult *msgResult = [self parseSearchMessageDescription:desc];
+                if (msgResult) {
+                    [messageMatches addObject:msgResult];
+                }
+            }
+        }
+        
+        results.chatMatches = chatMatches;
+        results.messageMatches = messageMatches;
+        
+    } @catch (NSException *exception) {
+        NSLog(@"WAAccessibility: Exception in globalSearch: %@", exception);
+    }
+    
+    // Release all found elements
+    for (id elem in allFoundElements) {
+        if (elem && elem != [NSNull null]) {
+            CFRelease((__bridge AXUIElementRef)elem);
+        }
+    }
+    
+    CFRelease(window);
+    return results;
+}
+
+- (WASearchMessageResult *)parseSearchMessageDescription:(NSString *)desc {
+    // Format: "ChatName, ⁨Sender⁩‎: ‎message preview text..."
+    // Or: "ChatName, ⁨‎You⁩‎: ‎message preview text..."
+    // After cleaning: "ChatName, Sender: message preview text..."
+    
+    if (!desc || desc.length == 0) return nil;
+    
+    WASearchMessageResult *result = [[WASearchMessageResult alloc] init];
+    
+    // Find the first comma to get chat name
+    NSRange firstComma = [desc rangeOfString:@", "];
+    if (firstComma.location == NSNotFound) {
+        // No comma, use whole thing as chat name
+        result.chatName = desc;
+        return result;
+    }
+    
+    result.chatName = [desc substringToIndex:firstComma.location];
+    NSString *remainder = [desc substringFromIndex:firstComma.location + 2];
+    
+    // Find the colon to separate sender from message
+    NSRange colonRange = [remainder rangeOfString:@": "];
+    if (colonRange.location != NSNotFound) {
+        result.sender = [remainder substringToIndex:colonRange.location];
+        result.messagePreview = [remainder substringFromIndex:colonRange.location + 2];
+        
+        // Check if sender is "You" (outgoing message)
+        if ([result.sender isEqualToString:@"You"]) {
+            result.sender = nil; // Clear it for outgoing messages
+        }
+    } else {
+        // No colon, just use remainder as message
+        result.messagePreview = remainder;
+    }
+    
+    return result;
+}
+
+- (BOOL)clearSearch {
+    AXUIElementRef window = [self getMainWindow];
+    if (!window) return NO;
+    
+    BOOL result = NO;
+    AXUIElementRef clearButton = [self findElementWithIdentifier:@"TokenizedSearchBar_DeleteButton" inElement:window];
+    if (clearButton) {
+        result = [self pressElement:clearButton];
+        CFRelease(clearButton);
+    } else {
+        // Fallback: press Escape key to clear search (no focus stealing)
+        pid_t waPid = self.whatsappPID;
+        if (waPid != 0) {
+            [self pressKey:53 withFlags:0 toProcess:waPid];  // Escape
+            result = YES;
+        }
+    }
+    
+    CFRelease(window);
+    return result;
+}
+
 #pragma mark - Actions
 
 - (BOOL)sendMessage:(NSString *)message {
     AXUIElementRef window = [self getMainWindow];
     if (!window) return NO;
+    
+    pid_t waPid = self.whatsappPID;
+    if (waPid == 0) {
+        CFRelease(window);
+        return NO;
+    }
     
     // Find the compose text area
     AXUIElementRef composeArea = [self findElementWithIdentifier:@"ChatBar_ComposerTextView" inElement:window];
@@ -678,10 +1018,8 @@
         return NO;
     }
     
-    // Focus and set value
+    // Focus and set value via accessibility (no window activation needed)
     [self setFocusOnElement:composeArea];
-    
-    // Small delay for focus
     [NSThread sleepForTimeInterval:0.1];
     
     // Set the text value
@@ -691,16 +1029,8 @@
         return NO;
     }
     
-    // Need to simulate Enter key to send
-    // AX doesn't directly support this, we'll use CGEvent
-    CGEventRef keyDown = CGEventCreateKeyboardEvent(NULL, 36, true);  // 36 = Return key
-    CGEventRef keyUp = CGEventCreateKeyboardEvent(NULL, 36, false);
-    
-    CGEventPost(kCGHIDEventTap, keyDown);
-    CGEventPost(kCGHIDEventTap, keyUp);
-    
-    CFRelease(keyDown);
-    CFRelease(keyUp);
+    // Send Enter key directly to WhatsApp (no focus stealing)
+    [self pressKey:36 withFlags:0 toProcess:waPid];  // 36 = Return key
     
     CFRelease(composeArea);
     CFRelease(window);
@@ -711,37 +1041,21 @@
     AXUIElementRef window = [self getMainWindow];
     if (!window) return NO;
     
-    BOOL result = NO;
-    AXUIElementRef searchField = NULL;
-    
-    // Find search field
-    searchField = [self findElementWithIdentifier:@"TokenizedSearchBar_TextView" inElement:window];
-    if (!searchField) {
-        // Try the search button first
-        AXUIElementRef searchButton = [self findFirstElementIn:window predicate:^BOOL(AXUIElementRef element, NSString *role, NSString *identifier) {
-            NSString *desc = [self descriptionOfElement:element];
-            return role && desc && [role isEqualToString:@"AXButton"] && [desc isEqualToString:@"Search"];
-        } maxDepth:15];
-        
-        if (searchButton) {
-            [self pressElement:searchButton];
-            CFRelease(searchButton);
-            [NSThread sleepForTimeInterval:0.3];
-            
-            // Try to find search field again
-            searchField = [self findElementWithIdentifier:@"TokenizedSearchBar_TextView" inElement:window];
-        }
+    pid_t waPid = self.whatsappPID;
+    if (waPid == 0) {
+        CFRelease(window);
+        return NO;
     }
     
-    if (searchField) {
-        [self setFocusOnElement:searchField];
-        [NSThread sleepForTimeInterval:0.1];
-        result = [self setValueOfElement:searchField to:query];
-        CFRelease(searchField);
-    }
+    // Press Cmd+F to open search
+    [self pressKey:3 withFlags:kCGEventFlagMaskCommand toProcess:waPid];
+    [NSThread sleepForTimeInterval:0.5];
+    
+    // Type the query
+    [self typeString:query toProcess:waPid];
     
     CFRelease(window);
-    return result;
+    return YES;
 }
 
 #pragma mark - Navigation
