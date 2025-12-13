@@ -114,9 +114,6 @@
     [self.window makeKeyAndOrderFront:nil];
     [NSApp activateIgnoringOtherApps:YES];
     
-    // Create Debug menu
-    [self setupDebugMenu];
-    
     // Welcome message
     [self appendLog:@"╔══════════════════════════════════════════════════════════════╗" color:NSColor.cyanColor];
     [self appendLog:@"║           WhatsAppMCP Server v1.0                            ║" color:NSColor.cyanColor];
@@ -318,72 +315,9 @@
     }
 }
 
-#pragma mark - Debug Actions (connect to menu items if desired)
 
-- (void)setupDebugMenu {
-    // Create Debug menu
-    NSMenu *debugMenu = [[NSMenu alloc] initWithTitle:@"Debug"];
-    
-    // Search tests
-    NSMenuItem *searchItem = [debugMenu addItemWithTitle:@"Test Search \"SCB\"" 
-                                                  action:@selector(testGlobalSearch:) 
-                                           keyEquivalent:@"s"];
-    searchItem.keyEquivalentModifierMask = NSEventModifierFlagCommand | NSEventModifierFlagShift;
-    searchItem.target = self;
-    
-    NSMenuItem *customSearchItem = [debugMenu addItemWithTitle:@"Test Search Custom..." 
-                                                        action:@selector(testGlobalSearchCustom:) 
-                                                 keyEquivalent:@"f"];
-    customSearchItem.keyEquivalentModifierMask = NSEventModifierFlagCommand | NSEventModifierFlagShift;
-    customSearchItem.target = self;
-    
-    NSMenuItem *clearItem = [debugMenu addItemWithTitle:@"Clear Search" 
-                                                 action:@selector(testClearSearch:) 
-                                          keyEquivalent:@""];
-    clearItem.target = self;
-    
-    [debugMenu addItem:[NSMenuItem separatorItem]];
-    
-    // Input method tests
-    NSMenuItem *clipboardItem = [debugMenu addItemWithTitle:@"Test Clipboard Paste (SCB)" 
-                                                     action:@selector(testClipboardPaste:) 
-                                              keyEquivalent:@""];
-    clipboardItem.target = self;
-    
-    NSMenuItem *typingItem = [debugMenu addItemWithTitle:@"Test Character Typing (SCB)" 
-                                                  action:@selector(testCharacterTyping:) 
-                                           keyEquivalent:@""];
-    typingItem.target = self;
-    
-    [debugMenu addItem:[NSMenuItem separatorItem]];
-    
-    // Other tests
-    NSMenuItem *allTestsItem = [debugMenu addItemWithTitle:@"Run All Tests" 
-                                                    action:@selector(runTests:) 
-                                             keyEquivalent:@"t"];
-    allTestsItem.keyEquivalentModifierMask = NSEventModifierFlagCommand | NSEventModifierFlagShift;
-    allTestsItem.target = self;
-    
-    NSMenuItem *exploreItem = [debugMenu addItemWithTitle:@"Explore AX Hierarchy" 
-                                                   action:@selector(explore:) 
-                                            keyEquivalent:@""];
-    exploreItem.target = self;
-    
-    [debugMenu addItem:[NSMenuItem separatorItem]];
-    
-    // Status
-    NSMenuItem *statusItem = [debugMenu addItemWithTitle:@"Check Status" 
-                                                  action:@selector(checkPermissions:) 
-                                           keyEquivalent:@""];
-    statusItem.target = self;
-    
-    // Add to main menu
-    NSMenuItem *debugMenuItem = [[NSMenuItem alloc] initWithTitle:@"Debug" action:nil keyEquivalent:@""];
-    [debugMenuItem setSubmenu:debugMenu];
-    [[NSApp mainMenu] addItem:debugMenuItem];
-}
-
-- (IBAction)testGlobalSearch:(id)sender {
+- (IBAction)testGlobalSearch:(id)sender
+{
     [self runGlobalSearchTest:@"SCB"];
 }
 
@@ -532,6 +466,79 @@
         dispatch_async(dispatch_get_main_queue(), ^{
             [self appendLog:@"Tests complete - see Console for output" color:NSColor.greenColor];
         });
+    });
+}
+
+- (IBAction)debugGetSearchResults:(id)sender {
+    dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
+        [WAAccessibilityTest testGetSearchResults];
+    });
+}
+
+- (IBAction)debugSearchAndParse:(id)sender {
+    // Show input dialog for query
+    NSAlert *alert = [[NSAlert alloc] init];
+    alert.messageText = @"Search Query";
+    alert.informativeText = @"Enter search term:";
+    [alert addButtonWithTitle:@"Search"];
+    [alert addButtonWithTitle:@"Cancel"];
+    
+    NSTextField *input = [[NSTextField alloc] initWithFrame:NSMakeRect(0, 0, 200, 24)];
+    input.stringValue = @"ChatGPT";  // Default query
+    alert.accessoryView = input;
+    
+    if ([alert runModal] == NSAlertFirstButtonReturn) {
+        NSString *query = input.stringValue;
+        dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
+            [WAAccessibilityTest testSearchAndParseResults:query];
+        });
+    }
+}
+
+- (IBAction)debugClickResult0:(id)sender {
+    dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
+        [WAAccessibilityTest testClickSearchResult:0];
+    });
+}
+
+- (IBAction)debugClickResult1:(id)sender {
+    dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
+        [WAAccessibilityTest testClickSearchResult:1];
+    });
+}
+
+- (IBAction)debugClickResult2:(id)sender {
+    dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
+        [WAAccessibilityTest testClickSearchResult:2];
+    });
+}
+
+- (IBAction)debugTestParsing:(id)sender {
+    // Test various description formats
+    dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
+        NSLog(@"\n\n=== PARSING UNIT TESTS ===\n");
+        
+        // Test case 1: Simple incoming
+        [WAAccessibilityTest testParseSearchResultDescription:
+            @"Igor Berezovsky, это необязательно. как раз второе предложение"];
+        
+        // Test case 2: Outgoing with You:
+        [WAAccessibilityTest testParseSearchResultDescription:
+            @"Igor Berezovsky, ⁨You⁩: …multiple AI services (ChatGPT, Claude, Gemini"];
+        
+        // Test case 3: With date
+        [WAAccessibilityTest testParseSearchResultDescription:
+            @"Igor Berezovsky, Here Evren used ChatGPT to some extent as well:, 29/11/2025"];
+        
+        // Test case 4: Group chat
+        [WAAccessibilityTest testParseSearchResultDescription:
+            @"Chess club Monaco 🇲🇨 ♟, Bonjour! pour Grasse, 13 et 14 decembre"];
+        
+        // Test case 5: Cyrillic
+        [WAAccessibilityTest testParseSearchResultDescription:
+            @"Tania Melamed ( Chess, Шахматы ), Я не с ним - он в Grasse с мамой"];
+        
+        NSLog(@"\n=== END PARSING TESTS ===\n");
     });
 }
 
