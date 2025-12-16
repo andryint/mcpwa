@@ -7,6 +7,8 @@
 
 #import "AppDelegate.h"
 #import "MCPServer.h"
+#import "MCPSocketTransport.h"
+#import "MCPStdioTransport.h"
 #import "WAAccessibility.h"
 #import "WAAccessibilityExplorer.h"
 #import "WAAccessibilityTest.h"
@@ -14,13 +16,57 @@
 @interface AppDelegate ()
 @property (nonatomic, strong) MCPServer *server;
 @property (nonatomic, assign) BOOL serverRunning;
+@property (nonatomic, assign) MCPTransportType transportType;
+@property (nonatomic, strong) NSString *customSocketPath;
 @end
 
 @implementation AppDelegate
 
 - (void)applicationDidFinishLaunching:(NSNotification *)notification {
+    [self parseCommandLineArguments];
     [self setupWindow];
     [self checkInitialStatus];
+
+    // Auto-start server if launched with --autostart or transport argument
+    if ([self shouldAutoStart]) {
+        [self startServer];
+    }
+}
+
+- (void)parseCommandLineArguments {
+    NSArray *args = [[NSProcessInfo processInfo] arguments];
+
+    // Default to socket transport
+    self.transportType = MCPTransportTypeSocket;
+    self.customSocketPath = nil;
+
+    for (NSUInteger i = 1; i < args.count; i++) {
+        NSString *arg = args[i];
+
+        if ([arg isEqualToString:@"--stdio"]) {
+            self.transportType = MCPTransportTypeStdio;
+        }
+        else if ([arg isEqualToString:@"--socket"]) {
+            self.transportType = MCPTransportTypeSocket;
+            // Check for optional path argument
+            if (i + 1 < args.count && ![args[i + 1] hasPrefix:@"--"]) {
+                self.customSocketPath = args[i + 1];
+                i++;
+            }
+        }
+    }
+}
+
+- (BOOL)shouldAutoStart {
+    NSArray *args = [[NSProcessInfo processInfo] arguments];
+    for (NSString *arg in args) {
+        if ([arg isEqualToString:@"--autostart"] ||
+            [arg isEqualToString:@"--stdio"] ||
+            [arg isEqualToString:@"--socket"]) {
+            return YES;
+        }
+    }
+    return NO;
 }
 
 - (void)setupWindow {
@@ -156,10 +202,10 @@
 - (void)updateStatusLabel {
     BOOL hasPermission = AXIsProcessTrusted();
     BOOL isAvailable = [[WAAccessibility shared] isWhatsAppAvailable];
-    
+
     NSString *status;
     NSColor *color;
-    
+
     if (!hasPermission) {
         status = @"🔴 Accessibility permission required";
         color = NSColor.redColor;
@@ -167,13 +213,17 @@
         status = @"🟡 WhatsApp not running or not accessible";
         color = NSColor.orangeColor;
     } else if (self.serverRunning) {
-        status = @"🟢 Server running - Ready for Claude Desktop";
-        color = NSColor.greenColor;
+        if (self.server.isConnected) {
+            status = @"🟢 Server running - Client connected";
+        } else {
+            status = @"🟡 Server running - Waiting for client...";
+        }
+        color = self.server.isConnected ? NSColor.greenColor : NSColor.orangeColor;
     } else {
         status = @"🟢 Ready - Click 'Start Server' to begin";
         color = NSColor.greenColor;
     }
-    
+
     self.statusLabel.stringValue = status;
     self.statusLabel.textColor = color;
 }
@@ -190,7 +240,7 @@
 
 - (void)startServer {
     BOOL hasPermission = AXIsProcessTrusted();
-    
+
     if (!hasPermission) {
         NSAlert *alert = [[NSAlert alloc] init];
         alert.messageText = @"Accessibility Permission Required";
@@ -198,39 +248,74 @@
         alert.alertStyle = NSAlertStyleWarning;
         [alert addButtonWithTitle:@"Open System Settings"];
         [alert addButtonWithTitle:@"Cancel"];
-        
+
         if ([alert runModal] == NSAlertFirstButtonReturn) {
             [[NSWorkspace sharedWorkspace] openURL:[NSURL URLWithString:@"x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility"]];
         }
         return;
     }
-    
+
     [self appendLog:@"Starting MCP server..." color:NSColor.cyanColor];
-    
-    self.server = [[MCPServer alloc] initWithDelegate:self];
-    [self.server start];
-    
+
+    // Create transport based on configuration
+    id<MCPTransport> transport;
+    NSString *transportDesc;
+
+    if (self.transportType == MCPTransportTypeStdio) {
+        transport = [[MCPStdioTransport alloc] init];
+        transportDesc = @"stdio";
+    } else {
+        if (self.customSocketPath) {
+            transport = [[MCPSocketTransport alloc] initWithSocketPath:self.customSocketPath];
+            transportDesc = [NSString stringWithFormat:@"socket: %@", self.customSocketPath];
+        } else {
+            transport = [[MCPSocketTransport alloc] init];
+            transportDesc = [NSString stringWithFormat:@"socket: %@", kMCPDefaultSocketPath];
+        }
+    }
+
+    self.server = [[MCPServer alloc] initWithTransport:transport delegate:self];
+
+    NSError *error = nil;
+    if (![self.server start:&error]) {
+        [self appendLog:[NSString stringWithFormat:@"❌ Failed to start server: %@", error.localizedDescription]
+                  color:NSColor.redColor];
+        self.server = nil;
+        return;
+    }
+
     self.serverRunning = YES;
     self.startStopButton.title = @"Stop Server";
     [self updateStatusLabel];
-    
-    [self appendLog:@"✅ Server started - listening on stdio" color:NSColor.greenColor];
-    [self appendLog:@"   Waiting for Claude Desktop connection..." color:NSColor.systemGrayColor];
+
+    [self appendLog:[NSString stringWithFormat:@"✅ Server started - listening on %@", transportDesc]
+              color:NSColor.greenColor];
+    [self appendLog:@"   Waiting for client connection..." color:NSColor.systemGrayColor];
     [self appendLog:@""];
 }
 
 - (void)stopServer {
     [self appendLog:@"Stopping MCP server..." color:NSColor.yellowColor];
-    
+
     [self.server stop];
     self.server = nil;
-    
+
     self.serverRunning = NO;
     self.startStopButton.title = @"Start Server";
     [self updateStatusLabel];
-    
+
     [self appendLog:@"Server stopped" color:NSColor.yellowColor];
     [self appendLog:@""];
+}
+
+#pragma mark - MCPServerDelegate (connection events)
+
+- (void)serverDidConnect {
+    [self updateStatusLabel];
+}
+
+- (void)serverDidDisconnect {
+    [self updateStatusLabel];
 }
 
 - (void)checkPermissions:(id)sender {

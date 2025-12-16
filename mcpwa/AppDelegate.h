@@ -1,5 +1,6 @@
 #import <Cocoa/Cocoa.h>
 #import "MCPServer.h"
+#import "MCPTransport.h"
 
 @interface AppDelegate : NSObject <NSApplicationDelegate, MCPServerDelegate>
 
