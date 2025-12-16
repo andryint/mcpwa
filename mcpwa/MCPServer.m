@@ -3,10 +3,11 @@
 //  mcpwa
 //
 //  MCP (Model Context Protocol) server implementation for Claude Desktop
-//  Communicates via stdio using JSON-RPC 2.0
+//  Communicates via transport layer (socket or stdio) using JSON-RPC 2.0
 //
 
 #import "MCPServer.h"
+#import "MCPSocketTransport.h"
 #import "WAAccessibility.h"
 #import <Cocoa/Cocoa.h>
 
@@ -17,101 +18,89 @@ static NSString * const kServerVersion = @"1.0.0";
 
 @interface MCPServer ()
 @property (nonatomic, assign) BOOL running;
-@property (nonatomic, strong) NSThread *serverThread;
-@property (nonatomic, strong) NSFileHandle *inputHandle;
+@property (nonatomic, strong) id<MCPTransport> transport;
 @end
 
 @implementation MCPServer
 
-- (instancetype)initWithDelegate:(id<MCPServerDelegate>)delegate {
+- (instancetype)initWithTransport:(id<MCPTransport>)transport
+                         delegate:(id<MCPServerDelegate>)delegate {
     self = [super init];
     if (self) {
+        _transport = transport;
+        _transport.delegate = self;
         _delegate = delegate;
         _running = NO;
     }
     return self;
 }
 
+- (instancetype)initWithDelegate:(id<MCPServerDelegate>)delegate {
+    // Default to socket transport
+    MCPSocketTransport *socketTransport = [[MCPSocketTransport alloc] init];
+    return [self initWithTransport:socketTransport delegate:delegate];
+}
+
 - (BOOL)isRunning {
     return _running;
 }
 
+- (BOOL)isConnected {
+    return self.transport.isConnected;
+}
+
 #pragma mark - Server Lifecycle
 
-- (void)start {
-    if (self.running) return;
-    
+- (BOOL)start:(NSError **)error {
+    if (self.running) return YES;
+
+    if (![self.transport start:error]) {
+        return NO;
+    }
+
     self.running = YES;
-    
-    // Disable stdout buffering
-    setvbuf(stdout, NULL, _IONBF, 0);
-    
-    // Start server on background thread
-    self.serverThread = [[NSThread alloc] initWithTarget:self selector:@selector(runLoop) object:nil];
-    self.serverThread.name = @"MCPServerThread";
-    [self.serverThread start];
+    return YES;
+}
+
+- (void)start {
+    NSError *error = nil;
+    if (![self start:&error]) {
+        [self log:[NSString stringWithFormat:@"Failed to start: %@", error.localizedDescription]
+            color:NSColor.redColor];
+    }
 }
 
 - (void)stop {
     self.running = NO;
-    
-    // Close input to break the read loop
-    [self.inputHandle closeFile];
-    
-    // Wait for thread to finish
-    while (self.serverThread && !self.serverThread.isFinished) {
-        [NSThread sleepForTimeInterval:0.1];
-    }
-    self.serverThread = nil;
+    [self.transport stop];
 }
 
-- (void)runLoop {
-    @autoreleasepool {
-        self.inputHandle = [NSFileHandle fileHandleWithStandardInput];
-        NSMutableData *buffer = [NSMutableData data];
-        
-        while (self.running) {
-            @autoreleasepool {
-                @try {
-                    NSData *data = [self.inputHandle availableData];
-                    
-                    if (data.length == 0) {
-                        // EOF
-                        [self log:@"EOF received - client disconnected" color:NSColor.yellowColor];
-                        break;
-                    }
-                    
-                    [buffer appendData:data];
-                    [self processBuffer:buffer];
-                }
-                @catch (NSException *exception) {
-                    [self log:[NSString stringWithFormat:@"Exception: %@", exception] color:NSColor.redColor];
-                    break;
-                }
-            }
-        }
-        
-        self.running = NO;
-        [self log:@"Server loop ended" color:NSColor.yellowColor];
+#pragma mark - MCPTransportDelegate
+
+- (void)transportDidReceiveLine:(NSString *)line {
+    [self processLine:line];
+}
+
+- (void)transportDidConnect {
+    [self log:@"Client connected" color:NSColor.greenColor];
+    if ([self.delegate respondsToSelector:@selector(serverDidConnect)]) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            [self.delegate serverDidConnect];
+        });
     }
 }
 
-- (void)processBuffer:(NSMutableData *)buffer {
-    while (YES) {
-        NSRange newlineRange = [buffer rangeOfData:[@"\n" dataUsingEncoding:NSUTF8StringEncoding]
-                                           options:0
-                                             range:NSMakeRange(0, buffer.length)];
-        
-        if (newlineRange.location == NSNotFound) break;
-        
-        NSData *lineData = [buffer subdataWithRange:NSMakeRange(0, newlineRange.location)];
-        [buffer replaceBytesInRange:NSMakeRange(0, newlineRange.location + 1) withBytes:NULL length:0];
-        
-        if (lineData.length == 0) continue;
-        
-        NSString *line = [[NSString alloc] initWithData:lineData encoding:NSUTF8StringEncoding];
-        [self processLine:line];
+- (void)transportDidDisconnect {
+    [self log:@"Client disconnected" color:NSColor.yellowColor];
+    if ([self.delegate respondsToSelector:@selector(serverDidDisconnect)]) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            [self.delegate serverDidDisconnect];
+        });
     }
+}
+
+- (void)transportLog:(NSString *)message {
+    [self log:message color:NSColor.systemGrayColor];
 }
 
 - (void)processLine:(NSString *)line {
@@ -706,11 +695,10 @@ static NSString * const kServerVersion = @"1.0.0";
 
 - (void)writeJSON:(NSDictionary *)dict {
     NSString *json = [self jsonString:dict];
-    printf("%s\n", json.UTF8String);
-    fflush(stdout);
-    
+    [self.transport writeLine:json];
+
     // Log outgoing (truncate long messages)
-    NSString *displayJson = json.length > 200 ? 
+    NSString *displayJson = json.length > 200 ?
         [[json substringToIndex:200] stringByAppendingString:@"..."] : json;
     [self log:[NSString stringWithFormat:@"▶ SEND: %@", displayJson] color:NSColor.systemTealColor];
 }
