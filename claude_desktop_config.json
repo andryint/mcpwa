@@ -3,9 +3,9 @@
     	"menuBarEnabled": false
   	},
   	
-  	"mcpServers": { 
-  		"whatsapp": { 
-  			"command": "/Users/andriy/WS/MCP/Build/Products/Debug/mcpwa.app/Contents/MacOS/mcpwa"
-  		} 
-  	} 
+  	"mcpServers": {
+    	"mcpwa": {
+      		"command": "/Applications/MCP/mcp-shim"
+    	}
+  	}
 }
