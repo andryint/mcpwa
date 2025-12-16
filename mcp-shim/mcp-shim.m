@@ -4,6 +4,7 @@
 #import <os/log.h>
 #import <sys/socket.h>
 #import <sys/un.h>
+#import <errno.h>
 
 static os_log_t logger;
 static NSString *socketPath = @"/tmp/mcpwa.sock";
@@ -12,19 +13,25 @@ static NSFileHandle *serverHandle;
 static BOOL stdinClosed = NO;
 
 int connectToServer(void) {
+    os_log_info(logger, "Attempting connection to %{public}@", socketPath);
+
     int sock = socket(AF_UNIX, SOCK_STREAM, 0);
-    if (sock < 0) return -1;
-    
+    if (sock < 0) {
+        os_log_error(logger, "Failed to create socket: %{public}s", strerror(errno));
+        return -1;
+    }
+
     struct sockaddr_un addr = {0};
     addr.sun_family = AF_UNIX;
     strncpy(addr.sun_path, socketPath.UTF8String, sizeof(addr.sun_path) - 1);
-    
+
     if (connect(sock, (struct sockaddr *)&addr, sizeof(addr)) < 0) {
+        os_log_error(logger, "Connection failed to %{public}@: %{public}s", socketPath, strerror(errno));
         close(sock);
         return -1;
     }
-    
-    os_log_info(logger, "Connected to mcpwa");
+
+    os_log_info(logger, "Connected to mcpwa at %{public}@", socketPath);
     return sock;
 }
 
