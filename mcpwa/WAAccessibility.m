@@ -797,6 +797,12 @@
     CGEventSetFlags(keyDown, kCGEventFlagMaskCommand);
     CGEventPostToPid(pid, keyDown);
     CFRelease(keyDown);
+    
+    [NSThread sleepForTimeInterval:0.05];
+    CGEventRef keyUp = CGEventCreateKeyboardEvent(source, 0x09, false);
+    CGEventPostToPid(pid, keyUp);
+    CFRelease(keyUp);
+
     if (source) CFRelease(source);
     
     [NSThread sleepForTimeInterval:0.1];
