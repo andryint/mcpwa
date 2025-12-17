@@ -865,11 +865,13 @@
             return results;
         }
         
-        // 1. Clear any existing search by pressing Escape twice
-        [self pressKey:53 withFlags:0 toProcess:waPid];  // Escape
-        [NSThread sleepForTimeInterval:0.15];
-        [self pressKey:53 withFlags:0 toProcess:waPid];  // Escape again
-        [NSThread sleepForTimeInterval:0.2];
+        // 1. Clear any existing search if clear button is available
+        AXUIElementRef clearButton = [self findElementWithIdentifier:@"TokenizedSearchBar_DeleteButton" inElement:window];
+        if (clearButton) {
+            [self pressElement:clearButton];
+            CFRelease(clearButton);
+            [NSThread sleepForTimeInterval:0.2];
+        }
         
         // 2. Press Cmd+F to open search (sent directly to WhatsApp)
         [self pressKey:3 withFlags:kCGEventFlagMaskCommand toProcess:waPid];  // F
