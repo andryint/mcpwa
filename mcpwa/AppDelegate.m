@@ -627,4 +627,35 @@
     });
 }
 
+-(IBAction)debugClickEsc:(id)sender {
+    dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
+        [WAAccessibilityTest testPressEsc];
+    });
+}
+
+-(IBAction)debugClickCmdF:(id)sender {
+    dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
+        [WAAccessibilityTest testPressCmdF];
+    });
+}
+
+-(IBAction)debugClickA:(id)sender {
+    dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
+        [WAAccessibilityTest testPressA];
+    });
+}
+
+-(IBAction)debugClickX:(id)sender {
+    dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
+        [WAAccessibilityTest testPressX];
+    });
+}
+
+- (IBAction)debugTypeInABC:(id)sender{
+    dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
+        [WAAccessibilityTest testTypeInABC];
+    });
+}
+
+
 @end

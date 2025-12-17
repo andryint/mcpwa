@@ -71,6 +71,7 @@ typedef NS_ENUM(NSInteger, WAMessageDirection) {
 
 @interface WAAccessibility : NSObject
 
+@property (readonly) pid_t whatsappPID;
 /// Shared instance
 + (instancetype)shared;
 
@@ -79,6 +80,10 @@ typedef NS_ENUM(NSInteger, WAMessageDirection) {
 
 /// Activate WhatsApp window
 - (BOOL)activateWhatsApp;
+- (AXUIElementRef)getMainWindow;
+- (void)pressKey:(CGKeyCode)keyCode withFlags:(CGEventFlags)flags toProcess:(pid_t)pid;
+- (void)typeString:(NSString *)string toProcess:(pid_t)pid;
+
 
 #pragma mark - Chat List
 

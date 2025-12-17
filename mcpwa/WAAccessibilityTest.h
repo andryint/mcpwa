@@ -44,4 +44,13 @@
 /// Test parsing a single description string (unit test style)
 + (void)testParseSearchResultDescription:(NSString *)desc;
 
++(void) testPressEsc;
++(void) testPressCmdF;
++(void) testPressA;
++(void) testPressX;
++(void) testTypeInABC;
+
+
+
+
 @end

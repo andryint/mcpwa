@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<document type="com.apple.InterfaceBuilder3.Cocoa.Storyboard.XIB" version="3.0" toolsVersion="24412" targetRuntime="MacOSX.Cocoa" propertyAccessControl="none" useAutolayout="YES" initialViewController="B8D-0N-5wS">
+<document type="com.apple.InterfaceBuilder3.Cocoa.Storyboard.XIB" version="3.0" toolsVersion="24506" targetRuntime="MacOSX.Cocoa" propertyAccessControl="none" useAutolayout="YES" initialViewController="B8D-0N-5wS">
     <dependencies>
-        <plugIn identifier="com.apple.InterfaceBuilder.CocoaPlugin" version="24412"/>
+        <plugIn identifier="com.apple.InterfaceBuilder.CocoaPlugin" version="24506"/>
         <capability name="documents saved in the Xcode 8 format" minToolsVersion="8.0"/>
     </dependencies>
     <scenes>
@@ -111,9 +111,9 @@
                                     </items>
                                 </menu>
                             </menuItem>
-                            <menuItem title="Item" id="Lqq-Pf-9lo" userLabel="Debug">
+                            <menuItem title="Debug" id="Lqq-Pf-9lo" userLabel="Debug">
                                 <modifierMask key="keyEquivalentModifierMask"/>
-                                <menu key="submenu" id="rZW-gQ-ylh">
+                                <menu key="submenu" title="Debug" id="rZW-gQ-ylh">
                                     <items>
                                         <menuItem title="Explore" id="L2Q-oU-zuO">
                                             <modifierMask key="keyEquivalentModifierMask"/>
@@ -173,6 +173,37 @@
                                             <modifierMask key="keyEquivalentModifierMask"/>
                                             <connections>
                                                 <action selector="debugTestParsing:" target="Voe-Tx-rLC" id="C4Q-9N-1KZ"/>
+                                            </connections>
+                                        </menuItem>
+                                        <menuItem isSeparatorItem="YES" id="zUO-oY-eaE"/>
+                                        <menuItem title="Press ESC" id="jZQ-yf-Amw" userLabel="Press ESC">
+                                            <modifierMask key="keyEquivalentModifierMask"/>
+                                            <connections>
+                                                <action selector="debugClickEsc:" target="Voe-Tx-rLC" id="cBT-7s-kHa"/>
+                                            </connections>
+                                        </menuItem>
+                                        <menuItem title="Press Cmd+F" id="bxg-UW-8Nj" userLabel="Press Cmd+F">
+                                            <modifierMask key="keyEquivalentModifierMask"/>
+                                            <connections>
+                                                <action selector="debugClickCmdF:" target="Voe-Tx-rLC" id="iMa-2B-z8t"/>
+                                            </connections>
+                                        </menuItem>
+                                        <menuItem title="Press A" id="CiV-0l-6qi" userLabel="Press A">
+                                            <modifierMask key="keyEquivalentModifierMask"/>
+                                            <connections>
+                                                <action selector="debugClickA:" target="Voe-Tx-rLC" id="4Jv-kS-LfZ"/>
+                                            </connections>
+                                        </menuItem>
+                                        <menuItem title="Press X" id="1ad-RX-4x2">
+                                            <modifierMask key="keyEquivalentModifierMask"/>
+                                            <connections>
+                                                <action selector="debugClickX:" target="Voe-Tx-rLC" id="DJS-jm-T67"/>
+                                            </connections>
+                                        </menuItem>
+                                        <menuItem title="Typein ABC" id="wqf-Ta-FYV" userLabel="Typein ABC">
+                                            <modifierMask key="keyEquivalentModifierMask"/>
+                                            <connections>
+                                                <action selector="debugTypeInABC:" target="Voe-Tx-rLC" id="zdp-1C-2fq"/>
                                             </connections>
                                         </menuItem>
                                     </items>

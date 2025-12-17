@@ -11,6 +11,7 @@
 #import "WASearchResultsAccessor.h"
 #import <Cocoa/Cocoa.h>
 #import <ApplicationServices/ApplicationServices.h>
+#import <Carbon/Carbon.h>
 
 @implementation WAAccessibilityTest
 
@@ -661,5 +662,181 @@
         case WASearchResultAttachmentDocument: return @"document";
     }
 }
+
+
++(void) testPressEsc
+{
+    AXUIElementRef window = [[WAAccessibility shared] getMainWindow];
+    if (!window) {
+        NSLog(@"ERROR: can't get the WhatsApp main window");
+        return;
+    }
+
+    pid_t waPid = [WAAccessibility shared].whatsappPID;
+    
+    if (waPid == 0) {
+        NSLog(@"ERROR: can't get the WhatsApp PID");
+        CFRelease(window);
+        return;
+    }
+
+    @try {
+        
+        [[WAAccessibility shared] pressKey:53 withFlags:0 toProcess:waPid];  // Escape
+        NSLog(@"Sent pressKey: ESC");
+//        [NSThread sleepForTimeInterval:1.0];
+        
+    } @catch (NSException *exception) {
+        NSLog(@"WAAccessibility: Exception in globalSearch: %@", exception);
+    }
+        
+    CFRelease(window);
+}
+
++(void) testPressCmdF
+{
+    AXUIElementRef window = [[WAAccessibility shared] getMainWindow];
+    if (!window) {
+        NSLog(@"ERROR: can't get the WhatsApp main window");
+        return;
+    }
+
+    pid_t waPid = [WAAccessibility shared].whatsappPID;
+    
+    if (waPid == 0) {
+        NSLog(@"ERROR: can't get the WhatsApp PID");
+        CFRelease(window);
+        return;
+    }
+
+    @try {
+        [[WAAccessibility shared] pressKey:3 withFlags:kCGEventFlagMaskCommand toProcess:waPid];
+        NSLog(@"Sent pressKey: Command+F");
+//        [NSThread sleepForTimeInterval:1.0];
+        
+    } @catch (NSException *exception) {
+        NSLog(@"WAAccessibility: Exception in globalSearch: %@", exception);
+    }
+        
+    CFRelease(window);
+}
+
++(void) testPressCmdV
+{
+    AXUIElementRef window = [[WAAccessibility shared] getMainWindow];
+    if (!window) {
+        NSLog(@"ERROR: can't get the WhatsApp main window");
+        return;
+    }
+
+    pid_t waPid = [WAAccessibility shared].whatsappPID;
+    
+    if (waPid == 0) {
+        NSLog(@"ERROR: can't get the WhatsApp PID");
+        CFRelease(window);
+        return;
+    }
+
+    @try {
+        [[WAAccessibility shared] pressKey:9 withFlags:kCGEventFlagMaskCommand toProcess:waPid];
+        NSLog(@"Sent pressKey: Command+V");
+//        [NSThread sleepForTimeInterval:1.0];
+        
+    } @catch (NSException *exception) {
+        NSLog(@"WAAccessibility: Exception in globalSearch: %@", exception);
+    }
+        
+    CFRelease(window);
+}
+
++(void) testPressA
+{
+    AXUIElementRef window = [[WAAccessibility shared] getMainWindow];
+    if (!window) {
+        NSLog(@"ERROR: can't get the WhatsApp main window");
+        return;
+    }
+
+    pid_t waPid = [WAAccessibility shared].whatsappPID;
+    
+    if (waPid == 0) {
+        NSLog(@"ERROR: can't get the WhatsApp PID");
+        CFRelease(window);
+        return;
+    }
+
+    @try {
+        [[WAAccessibility shared] pressKey:0 withFlags:0 toProcess:waPid];
+        NSLog(@"Sent pressKey: Command+V");
+//        [NSThread sleepForTimeInterval:1.0];
+        
+    } @catch (NSException *exception) {
+        NSLog(@"WAAccessibility: Exception in globalSearch: %@", exception);
+    }
+        
+    CFRelease(window);
+}
+
++(void) testPressX
+{
+    AXUIElementRef window = [[WAAccessibility shared] getMainWindow];
+    if (!window) {
+        NSLog(@"ERROR: can't get the WhatsApp main window");
+        return;
+    }
+
+    pid_t waPid = [WAAccessibility shared].whatsappPID;
+    
+    if (waPid == 0) {
+        NSLog(@"ERROR: can't get the WhatsApp PID");
+        CFRelease(window);
+        return;
+    }
+
+    @try {
+        [[WAAccessibility shared] pressKey:7 withFlags:0 toProcess:waPid];
+        NSLog(@"Sent pressKey: Command+V");
+//        [NSThread sleepForTimeInterval:1.0];
+        
+    } @catch (NSException *exception) {
+        NSLog(@"WAAccessibility: Exception in globalSearch: %@", exception);
+    }
+        
+    CFRelease(window);
+}
+
++(void) testTypeInABC
+{
+    AXUIElementRef window = [[WAAccessibility shared] getMainWindow];
+    if (!window) {
+        NSLog(@"ERROR: can't get the WhatsApp main window");
+        return;
+    }
+
+    pid_t waPid = [WAAccessibility shared].whatsappPID;
+    
+    if (waPid == 0) {
+        NSLog(@"ERROR: can't get the WhatsApp PID");
+        CFRelease(window);
+        return;
+    }
+
+    @try {
+        [[NSPasteboard generalPasteboard] clearContents];
+        [[NSPasteboard generalPasteboard] setString:@"ABC" forType:NSPasteboardTypeString];
+        [[WAAccessibility shared] pressKey:kVK_ANSI_V withFlags:kCGEventFlagMaskCommand toProcess:waPid];
+        
+        [[WAAccessibility shared] pressKey:36 withFlags:kCGEventFlagMaskCommand toProcess:waPid];
+
+
+        NSLog(@"Send string: ABC");
+        
+    } @catch (NSException *exception) {
+        NSLog(@"WAAccessibility: Exception in globalSearch: %@", exception);
+    }
+        
+    CFRelease(window);
+}
+
 
 @end

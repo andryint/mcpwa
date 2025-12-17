@@ -782,7 +782,36 @@
     if (source) CFRelease(source);
 }
 
+- (void)typeStringViaClipboard:(NSString *)string toProcess:(pid_t)pid {
+    // Save current clipboard
+    NSPasteboard *pb = [NSPasteboard generalPasteboard];
+//    NSArray *oldContents = [pb readObjectsForClasses:@[[NSString class], [NSImage class]] options:nil];
+    
+    // Set our string
+    [pb clearContents];
+    [pb setString:string forType:NSPasteboardTypeString];
+    
+    // Paste (keyDown only to avoid duplication)
+    CGEventSourceRef source = CGEventSourceCreate(kCGEventSourceStateHIDSystemState);
+    CGEventRef keyDown = CGEventCreateKeyboardEvent(source, 0x09, true);  // V
+    CGEventSetFlags(keyDown, kCGEventFlagMaskCommand);
+    CGEventPostToPid(pid, keyDown);
+    CFRelease(keyDown);
+    if (source) CFRelease(source);
+    
+    [NSThread sleepForTimeInterval:0.1];
+    
+    // Restore clipboard
+    [pb clearContents];
+//    if (oldContents.count > 0) {
+//        [pb writeObjects:oldContents];
+//    }
+}
+
+
 - (void)typeString:(NSString *)string toProcess:(pid_t)pid {
+    [self typeStringViaClipboard:string toProcess:pid];
+    /*
     CGEventSourceRef source = CGEventSourceCreate(kCGEventSourceStateHIDSystemState);
     
     for (NSUInteger i = 0; i < string.length; i++) {
@@ -808,6 +837,7 @@
     }
     
     if (source) CFRelease(source);
+     */
 }
 
 #pragma mark - Global Search
