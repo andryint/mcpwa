@@ -367,6 +367,24 @@
     return result;  // Caller is responsible for releasing this
 }
 
+#pragma mark - Search Mode Detection
+
+- (BOOL)isInSearchMode {
+    AXUIElementRef window = [self getMainWindow];
+    if (!window) return NO;
+
+    // Check if the search clear/delete button exists - indicates search mode is active
+    AXUIElementRef clearButton = [self findElementWithIdentifier:@"TokenizedSearchBar_DeleteButton" inElement:window];
+    BOOL inSearchMode = (clearButton != NULL);
+
+    if (clearButton) {
+        CFRelease(clearButton);
+    }
+    CFRelease(window);
+
+    return inSearchMode;
+}
+
 #pragma mark - Chat List
 
 - (NSArray<WAChat *> *)getChats {
@@ -437,17 +455,99 @@
     // (This is a heuristic - WhatsApp doesn't clearly expose unread state)
 }
 
-- (WAChat *)findChatWithName:(NSString *)name {
-    NSArray<WAChat *> *chats = [self getChats];
+/**
+ * Find chat in search results (when in search mode)
+ * Looks for ChatListSearchView_ChatResult elements that match the name
+ */
+- (WAChat *)findChatInSearchResults:(NSString *)name {
+    AXUIElementRef window = [self getMainWindow];
+    if (!window) return nil;
+
     NSString *lowerName = [name lowercaseString];
-    
+    WAChat *foundChat = nil;
+
+    // Find chat results in search (ChatListSearchView_ChatResult)
+    NSArray *chatResults = [self findElementsIn:window predicate:^BOOL(AXUIElementRef element, NSString *role, NSString *identifier) {
+        return [identifier isEqualToString:@"ChatListSearchView_ChatResult"];
+    } maxDepth:15];
+
+    NSInteger index = 0;
+    for (id chatBtn in chatResults) {
+        AXUIElementRef button = (__bridge AXUIElementRef)chatBtn;
+        NSString *chatName = [self descriptionOfElement:button];
+
+        if (chatName && [[chatName lowercaseString] containsString:lowerName]) {
+            foundChat = [[WAChat alloc] init];
+            foundChat.name = chatName;
+            foundChat.index = index;
+            foundChat.lastMessage = [self valueOfElement:button];
+            break;
+        }
+        index++;
+    }
+
+    // Release all elements
+    for (id btn in chatResults) {
+        CFRelease((__bridge AXUIElementRef)btn);
+    }
+    CFRelease(window);
+
+    return foundChat;
+}
+
+- (WAChat *)findChatWithName:(NSString *)name {
+    NSString *lowerName = [name lowercaseString];
+
+    // Step 1: Check if we're in search mode
+    BOOL inSearchMode = [self isInSearchMode];
+
+    if (inSearchMode) {
+        // Step 2a: In search mode - look for chat in search results first
+        WAChat *chat = [self findChatInSearchResults:name];
+        if (chat) {
+            return chat;
+        }
+        // If not found in current search results, clear search and try chat list
+        [self clearSearch];
+        [NSThread sleepForTimeInterval:0.3];
+    }
+
+    // Step 2b: In chat list mode - search the visible chat list
+    NSArray<WAChat *> *chats = [self getChats];
     for (WAChat *chat in chats) {
         if ([[chat.name lowercaseString] containsString:lowerName]) {
             return chat;
         }
     }
-    
-    return nil;
+
+    // Step 3: Not found in current view - perform a search
+    pid_t waPid = self.whatsappPID;
+    if (waPid == 0) return nil;
+
+    AXUIElementRef window = [self getMainWindow];
+    if (!window) return nil;
+
+    // Clear any existing search first
+    AXUIElementRef clearButton = [self findElementWithIdentifier:@"TokenizedSearchBar_DeleteButton" inElement:window];
+    if (clearButton) {
+        [self pressElement:clearButton];
+        CFRelease(clearButton);
+        [NSThread sleepForTimeInterval:0.2];
+    }
+
+    // Press Cmd+F to open search
+    [self pressKey:3 withFlags:kCGEventFlagMaskCommand toProcess:waPid];  // F key
+    [NSThread sleepForTimeInterval:0.5];
+
+    // Type the search query
+    [self typeString:name toProcess:waPid];
+    [NSThread sleepForTimeInterval:0.8];
+
+    CFRelease(window);
+
+    // Step 4: Find the chat in search results
+    WAChat *foundChat = [self findChatInSearchResults:name];
+    return foundChat;
 }
 
 - (BOOL)openChat:(WAChat *)chat {
