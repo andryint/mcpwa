@@ -1,4 +1,4 @@
 **/*.DS_Store
 **/*.xcuserstate
 /mcp-shim/mcp-shim
-**/xcuserdata/**
+xcuserdata/

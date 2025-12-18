@@ -85,12 +85,21 @@ typedef NS_ENUM(NSInteger, WAMessageDirection) {
 - (void)typeString:(NSString *)string toProcess:(pid_t)pid;
 
 
+#pragma mark - Search Mode Detection
+
+/// Check if WhatsApp is currently in search mode (search bar active with query)
+- (BOOL)isInSearchMode;
+
 #pragma mark - Chat List
 
 /// Get list of visible chats
 - (NSArray<WAChat *> *)getChats;
 
 /// Get chat by name (partial match)
+/// This method is smart about the current UI state:
+/// 1. If in search mode, looks in search results first
+/// 2. If not found or in chat list mode, searches visible chat list
+/// 3. If still not found, performs a search and looks in results
 - (nullable WAChat *)findChatWithName:(NSString *)name;
 
 /// Navigate to a specific chat by clicking on it

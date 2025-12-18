@@ -202,6 +202,17 @@
     return result;
 }
 
+- (NSArray<NSDictionary *> *)getSearchResultsAsDictionaries {
+    NSArray<WASearchResult *> *results = [self getSearchResults];
+    NSMutableArray<NSDictionary *> *dictionaries = [NSMutableArray arrayWithCapacity:results.count];
+
+    for (WASearchResult *result in results) {
+        [dictionaries addObject:[result toDictionary]];
+    }
+
+    return [dictionaries copy];
+}
+
 - (BOOL)clickSearchResultAtIndex:(NSInteger)index {
     // Get fresh reference - don't use cached
     AXUIElementRef container = [self findSearchResultsContainer];
