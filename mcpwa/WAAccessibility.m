@@ -6,6 +6,7 @@
 //
 
 #import "WAAccessibility.h"
+#import "WALogger.h"
 #import <ApplicationServices/ApplicationServices.h>
 
 #pragma mark - Data Model Implementations
@@ -371,7 +372,10 @@
 
 - (BOOL)isInSearchMode {
     AXUIElementRef window = [self getMainWindow];
-    if (!window) return NO;
+    if (!window) {
+        [WALogger debug:@"isInSearchMode: no main window"];
+        return NO;
+    }
 
     // Check if the search clear/delete button exists - indicates search mode is active
     AXUIElementRef clearButton = [self findElementWithIdentifier:@"TokenizedSearchBar_DeleteButton" inElement:window];
@@ -382,6 +386,7 @@
     }
     CFRelease(window);
 
+    [WALogger debug:@"isInSearchMode: %@", inSearchMode ? @"YES" : @"NO"];
     return inSearchMode;
 }
 
@@ -460,8 +465,13 @@
  * Looks for ChatListSearchView_ChatResult elements that match the name
  */
 - (WAChat *)findChatInSearchResults:(NSString *)name {
+    [WALogger debug:@"findChatInSearchResults: looking for '%@'", name];
+
     AXUIElementRef window = [self getMainWindow];
-    if (!window) return nil;
+    if (!window) {
+        [WALogger warn:@"findChatInSearchResults: no main window"];
+        return nil;
+    }
 
     NSString *lowerName = [name lowercaseString];
     WAChat *foundChat = nil;
@@ -471,16 +481,20 @@
         return [identifier isEqualToString:@"ChatListSearchView_ChatResult"];
     } maxDepth:15];
 
+    [WALogger debug:@"findChatInSearchResults: found %lu ChatResult elements", (unsigned long)chatResults.count];
+
     NSInteger index = 0;
     for (id chatBtn in chatResults) {
         AXUIElementRef button = (__bridge AXUIElementRef)chatBtn;
         NSString *chatName = [self descriptionOfElement:button];
+        [WALogger debug:@"  [%ld] chatName='%@'", (long)index, chatName ?: @"<nil>"];
 
         if (chatName && [[chatName lowercaseString] containsString:lowerName]) {
             foundChat = [[WAChat alloc] init];
             foundChat.name = chatName;
             foundChat.index = index;
             foundChat.lastMessage = [self valueOfElement:button];
+            [WALogger info:@"findChatInSearchResults: FOUND '%@' at index %ld", chatName, (long)index];
             break;
         }
         index++;
@@ -492,61 +506,93 @@
     }
     CFRelease(window);
 
+    if (!foundChat) {
+        [WALogger debug:@"findChatInSearchResults: NOT FOUND"];
+    }
     return foundChat;
 }
 
 - (WAChat *)findChatWithName:(NSString *)name {
+    [WALogger info:@"findChatWithName: '%@'", name];
+
     NSString *lowerName = [name lowercaseString];
 
     // Step 1: Check if we're in search mode
     BOOL inSearchMode = [self isInSearchMode];
+    [WALogger debug:@"findChatWithName: inSearchMode=%@", inSearchMode ? @"YES" : @"NO"];
 
     if (inSearchMode) {
         // Step 2a: In search mode - look for chat in search results first
+        [WALogger debug:@"findChatWithName: trying search results first"];
         WAChat *chat = [self findChatInSearchResults:name];
         if (chat) {
+            [WALogger info:@"findChatWithName: found in search results: '%@'", chat.name];
             return chat;
         }
         // If not found in current search results, clear search and try chat list
+        [WALogger debug:@"findChatWithName: not in search results, clearing search"];
         [self clearSearch];
         [NSThread sleepForTimeInterval:0.3];
     }
 
     // Step 2b: In chat list mode - search the visible chat list
+    [WALogger debug:@"findChatWithName: searching visible chat list"];
     NSArray<WAChat *> *chats = [self getChats];
+    [WALogger debug:@"findChatWithName: got %lu chats in list", (unsigned long)chats.count];
+
     for (WAChat *chat in chats) {
         if ([[chat.name lowercaseString] containsString:lowerName]) {
+            [WALogger info:@"findChatWithName: found in chat list: '%@'", chat.name];
             return chat;
         }
     }
 
     // Step 3: Not found in current view - perform a search
+    [WALogger debug:@"findChatWithName: not found in chat list, performing search"];
+
     pid_t waPid = self.whatsappPID;
-    if (waPid == 0) return nil;
+    if (waPid == 0) {
+        [WALogger error:@"findChatWithName: no WhatsApp PID"];
+        return nil;
+    }
 
     AXUIElementRef window = [self getMainWindow];
-    if (!window) return nil;
+    if (!window) {
+        [WALogger error:@"findChatWithName: no main window for search"];
+        return nil;
+    }
 
     // Clear any existing search first
     AXUIElementRef clearButton = [self findElementWithIdentifier:@"TokenizedSearchBar_DeleteButton" inElement:window];
     if (clearButton) {
+        [WALogger debug:@"findChatWithName: clearing existing search"];
         [self pressElement:clearButton];
         CFRelease(clearButton);
         [NSThread sleepForTimeInterval:0.2];
     }
 
     // Press Cmd+F to open search
+    [WALogger debug:@"findChatWithName: opening search (Cmd+F)"];
     [self pressKey:3 withFlags:kCGEventFlagMaskCommand toProcess:waPid];  // F key
     [NSThread sleepForTimeInterval:0.5];
 
     // Type the search query
+    [WALogger debug:@"findChatWithName: typing query '%@'", name];
     [self typeString:name toProcess:waPid];
     [NSThread sleepForTimeInterval:0.8];
 
     CFRelease(window);
 
     // Step 4: Find the chat in search results
+    [WALogger debug:@"findChatWithName: looking in new search results"];
     WAChat *foundChat = [self findChatInSearchResults:name];
+
+    if (foundChat) {
+        [WALogger info:@"findChatWithName: found after search: '%@'", foundChat.name];
+    } else {
+        [WALogger warn:@"findChatWithName: NOT FOUND anywhere for '%@'", name];
+    }
+
     return foundChat;
 }
 
