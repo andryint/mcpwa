@@ -12,6 +12,7 @@
 #import "WAAccessibility.h"
 #import "WAAccessibilityExplorer.h"
 #import "WAAccessibilityTest.h"
+#import "WALogger.h"
 
 @interface AppDelegate ()
 @property (nonatomic, strong) MCPServer *server;
@@ -26,6 +27,12 @@
     [self parseCommandLineArguments];
     [self setupWindow];
     [self checkInitialStatus];
+
+    // Subscribe to WALogger notifications
+    [[NSNotificationCenter defaultCenter] addObserver:self
+                                             selector:@selector(handleLogNotification:)
+                                                 name:WALogNotification
+                                               object:nil];
 
     // Auto-start server if launched with --autostart or transport argument
     if ([self shouldAutoStart]) {
@@ -386,6 +393,27 @@
         formatter.dateFormat = @"HH:mm:ss";
     }
     return [formatter stringFromDate:[NSDate date]];
+}
+
+#pragma mark - WALogger Integration
+
+- (void)handleLogNotification:(NSNotification *)notification {
+    NSString *message = notification.userInfo[@"message"];
+    NSString *level = notification.userInfo[@"level"];
+
+    NSColor *color;
+    if ([level isEqualToString:@"ERROR"]) {
+        color = NSColor.redColor;
+    } else if ([level isEqualToString:@"WARN"]) {
+        color = NSColor.yellowColor;
+    } else if ([level isEqualToString:@"INFO"]) {
+        color = NSColor.cyanColor;
+    } else {
+        color = [NSColor colorWithWhite:0.6 alpha:1.0];  // DEBUG - dimmer
+    }
+
+    NSString *logMessage = [NSString stringWithFormat:@"[%@] %@", level, message];
+    [self appendLog:logMessage color:color];
 }
 
 #pragma mark - Application Lifecycle
