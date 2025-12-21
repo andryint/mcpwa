@@ -93,7 +93,7 @@ typedef NS_ENUM(NSInteger, WAMessageDirection) {
 #pragma mark - Chat List
 
 /// Get list of visible chats
-- (NSArray<WAChat *> *)getChats;
+- (NSArray<WAChat *> *)getRecentChats;
 
 /// Get chat by name (partial match)
 /// This method is smart about the current UI state:

@@ -27,13 +27,13 @@
     [self parseCommandLineArguments];
     [self setupWindow];
     [self checkInitialStatus];
-
+    
     // Subscribe to WALogger notifications
     [[NSNotificationCenter defaultCenter] addObserver:self
                                              selector:@selector(handleLogNotification:)
                                                  name:WALogNotification
                                                object:nil];
-
+    
     // Auto-start server if launched with --autostart or transport argument
     if ([self shouldAutoStart]) {
         [self startServer];
@@ -42,14 +42,14 @@
 
 - (void)parseCommandLineArguments {
     NSArray *args = [[NSProcessInfo processInfo] arguments];
-
+    
     // Default to socket transport
     self.transportType = MCPTransportTypeSocket;
     self.customSocketPath = nil;
-
+    
     for (NSUInteger i = 1; i < args.count; i++) {
         NSString *arg = args[i];
-
+        
         if ([arg isEqualToString:@"--stdio"]) {
             self.transportType = MCPTransportTypeStdio;
         }
@@ -79,10 +79,10 @@
 - (void)setupWindow {
     // Create main window
     NSRect frame = NSMakeRect(100, 100, 800, 500);
-    NSWindowStyleMask style = NSWindowStyleMaskTitled | 
-                              NSWindowStyleMaskClosable | 
-                              NSWindowStyleMaskMiniaturizable | 
-                              NSWindowStyleMaskResizable;
+    NSWindowStyleMask style = NSWindowStyleMaskTitled |
+    NSWindowStyleMaskClosable |
+    NSWindowStyleMaskMiniaturizable |
+    NSWindowStyleMaskResizable;
     
     self.window = [[NSWindow alloc] initWithContentRect:frame
                                               styleMask:style
@@ -183,7 +183,7 @@
     BOOL isAvailable = [wa isWhatsAppAvailable];
     
     [self appendLog:@"Startup checks:"];
-    [self appendLog:[NSString stringWithFormat:@"  • Accessibility permission: %@", 
+    [self appendLog:[NSString stringWithFormat:@"  • Accessibility permission: %@",
                      hasPermission ? @"✅ Granted" : @"❌ Not granted"]
               color:hasPermission ? NSColor.greenColor : NSColor.redColor];
     [self appendLog:[NSString stringWithFormat:@"  • WhatsApp accessible: %@",
@@ -209,10 +209,10 @@
 - (void)updateStatusLabel {
     BOOL hasPermission = AXIsProcessTrusted();
     BOOL isAvailable = [[WAAccessibility shared] isWhatsAppAvailable];
-
+    
     NSString *status;
     NSColor *color;
-
+    
     if (!hasPermission) {
         status = @"🔴 Accessibility permission required";
         color = NSColor.redColor;
@@ -230,7 +230,7 @@
         status = @"🟢 Ready - Click 'Start Server' to begin";
         color = NSColor.greenColor;
     }
-
+    
     self.statusLabel.stringValue = status;
     self.statusLabel.textColor = color;
 }
@@ -247,7 +247,7 @@
 
 - (void)startServer {
     BOOL hasPermission = AXIsProcessTrusted();
-
+    
     if (!hasPermission) {
         NSAlert *alert = [[NSAlert alloc] init];
         alert.messageText = @"Accessibility Permission Required";
@@ -255,19 +255,19 @@
         alert.alertStyle = NSAlertStyleWarning;
         [alert addButtonWithTitle:@"Open System Settings"];
         [alert addButtonWithTitle:@"Cancel"];
-
+        
         if ([alert runModal] == NSAlertFirstButtonReturn) {
             [[NSWorkspace sharedWorkspace] openURL:[NSURL URLWithString:@"x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility"]];
         }
         return;
     }
-
+    
     [self appendLog:@"Starting MCP server..." color:NSColor.cyanColor];
-
+    
     // Create transport based on configuration
     id<MCPTransport> transport;
     NSString *transportDesc;
-
+    
     if (self.transportType == MCPTransportTypeStdio) {
         transport = [[MCPStdioTransport alloc] init];
         transportDesc = @"stdio";
@@ -280,9 +280,9 @@
             transportDesc = [NSString stringWithFormat:@"socket: %@", kMCPDefaultSocketPath];
         }
     }
-
+    
     self.server = [[MCPServer alloc] initWithTransport:transport delegate:self];
-
+    
     NSError *error = nil;
     if (![self.server start:&error]) {
         [self appendLog:[NSString stringWithFormat:@"❌ Failed to start server: %@", error.localizedDescription]
@@ -290,11 +290,11 @@
         self.server = nil;
         return;
     }
-
+    
     self.serverRunning = YES;
     self.startStopButton.title = @"Stop Server";
     [self updateStatusLabel];
-
+    
     [self appendLog:[NSString stringWithFormat:@"✅ Server started - listening on %@", transportDesc]
               color:NSColor.greenColor];
     [self appendLog:@"   Waiting for client connection..." color:NSColor.systemGrayColor];
@@ -303,14 +303,14 @@
 
 - (void)stopServer {
     [self appendLog:@"Stopping MCP server..." color:NSColor.yellowColor];
-
+    
     [self.server stop];
     self.server = nil;
-
+    
     self.serverRunning = NO;
     self.startStopButton.title = @"Start Server";
     [self updateStatusLabel];
-
+    
     [self appendLog:@"Server stopped" color:NSColor.yellowColor];
     [self appendLog:@""];
 }
@@ -341,7 +341,7 @@
     
     if (hasPermission && isAvailable) {
         // Quick test - get chats
-        NSArray<WAChat *> *chats = [wa getChats];
+        NSArray<WAChat *> *chats = [wa getRecentChats];
         [self appendLog:[NSString stringWithFormat:@"  • Chat access: ✅ Found %lu chats", (unsigned long)chats.count]
                   color:NSColor.greenColor];
         
@@ -369,9 +369,9 @@
 - (void)appendLog:(NSString *)message color:(NSColor *)color {
     dispatch_async(dispatch_get_main_queue(), ^{
         NSString *timestamp = [self currentTimestamp];
-        NSString *line = message.length > 0 ? 
-            [NSString stringWithFormat:@"[%@] %@\n", timestamp, message] :
-            @"\n";
+        NSString *line = message.length > 0 ?
+        [NSString stringWithFormat:@"[%@] %@\n", timestamp, message] :
+        @"\n";
         
         NSColor *textColor = color ?: [NSColor colorWithWhite:0.85 alpha:1.0];
         NSDictionary *attrs = @{
@@ -400,7 +400,7 @@
 - (void)handleLogNotification:(NSNotification *)notification {
     NSString *message = notification.userInfo[@"message"];
     NSString *level = notification.userInfo[@"level"];
-
+    
     NSColor *color;
     if ([level isEqualToString:@"ERROR"]) {
         color = NSColor.redColor;
@@ -411,7 +411,7 @@
     } else {
         color = [NSColor colorWithWhite:0.6 alpha:1.0];  // DEBUG - dimmer
     }
-
+    
     NSString *logMessage = [NSString stringWithFormat:@"[%@] %@", level, message];
     [self appendLog:logMessage color:color];
 }
@@ -484,7 +484,7 @@
                 return;
             }
             
-            [self appendLog:[NSString stringWithFormat:@"  Chat matches: %lu", (unsigned long)results.chatMatches.count] 
+            [self appendLog:[NSString stringWithFormat:@"  Chat matches: %lu", (unsigned long)results.chatMatches.count]
                       color:NSColor.greenColor];
             [self appendLog:[NSString stringWithFormat:@"  Message matches: %lu", (unsigned long)results.messageMatches.count]
                       color:NSColor.greenColor];
@@ -502,10 +502,10 @@
                 [self appendLog:@"  --- Messages ---" color:NSColor.systemGrayColor];
                 for (WASearchMessageResult *msg in results.messageMatches) {
                     NSString *preview = msg.messagePreview.length > 50 ?
-                        [[msg.messagePreview substringToIndex:50] stringByAppendingString:@"..."] :
-                        msg.messagePreview;
-                    [self appendLog:[NSString stringWithFormat:@"    💬 [%@] %@: %@", 
-                                    msg.chatName, msg.sender ?: @"You", preview]];
+                    [[msg.messagePreview substringToIndex:50] stringByAppendingString:@"..."] :
+                    msg.messagePreview;
+                    [self appendLog:[NSString stringWithFormat:@"    💬 [%@] %@: %@",
+                                     msg.chatName, msg.sender ?: @"You", preview]];
                 }
             }
             
@@ -517,6 +517,32 @@
             [self appendLog:@""];
         });
     });
+}
+
+-(IBAction)testOpenChat:(id)sender
+{
+    // Show input dialog
+    NSAlert *alert = [[NSAlert alloc] init];
+    alert.messageText = @"Global Search Test";
+    alert.informativeText = @"Enter search query:";
+    alert.alertStyle = NSAlertStyleInformational;
+    [alert addButtonWithTitle:@"Search"];
+    [alert addButtonWithTitle:@"Cancel"];
+    
+    NSTextField *input = [[NSTextField alloc] initWithFrame:NSMakeRect(0, 0, 200, 24)];
+    input.stringValue = @"";
+    input.placeholderString = @"Enter search term...";
+    alert.accessoryView = input;
+    
+    // Make input first responder
+    [alert.window setInitialFirstResponder:input];
+    
+    if ([alert runModal] == NSAlertFirstButtonReturn) {
+        NSString *query = input.stringValue;
+        if (query.length > 0) {
+            [WAAccessibilityTest testOpenChat:query];
+        }
+    }
 }
 
 - (IBAction)testClearSearch:(id)sender {
@@ -684,6 +710,21 @@
         [WAAccessibilityTest testTypeInABC];
     });
 }
+
+- (IBAction)debugReadChatList:(id)sender
+{
+    dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
+        [[WAAccessibility shared] getRecentChats];
+    }) ;
+}
+
+- (IBAction)debugGetCurrentChat:(id)sender
+{
+    dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
+        [WAAccessibilityTest testGetCurrentChat];
+    }) ;
+}
+
 
 
 @end

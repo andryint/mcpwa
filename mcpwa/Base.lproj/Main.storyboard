@@ -127,10 +127,28 @@
                                                 <action selector="runTests:" target="Voe-Tx-rLC" id="LVq-Yu-4NS"/>
                                             </connections>
                                         </menuItem>
-                                        <menuItem title="Global Search" id="RCj-7j-dpT">
+                                        <menuItem title="List of Chats" id="RCj-7j-dpT" userLabel="List of Chats">
                                             <modifierMask key="keyEquivalentModifierMask"/>
                                             <connections>
-                                                <action selector="testGlobalSearchCustom:" target="Voe-Tx-rLC" id="o9e-ru-XZI"/>
+                                                <action selector="debugReadChatList:" target="Voe-Tx-rLC" id="zkV-nx-BBb"/>
+                                            </connections>
+                                        </menuItem>
+                                        <menuItem title="Open Chat" id="j5i-pi-tGQ">
+                                            <modifierMask key="keyEquivalentModifierMask"/>
+                                            <connections>
+                                                <action selector="testOpenChat:" target="Voe-Tx-rLC" id="dWh-CT-r3p"/>
+                                            </connections>
+                                        </menuItem>
+                                        <menuItem title="Get Current Chat " id="nhp-Rs-EZ5" userLabel="Get Current Chat">
+                                            <modifierMask key="keyEquivalentModifierMask"/>
+                                            <connections>
+                                                <action selector="debugGetCurrentChat:" target="Voe-Tx-rLC" id="e4f-xZ-rYR"/>
+                                            </connections>
+                                        </menuItem>
+                                        <menuItem title="Global Search" id="Wdg-qK-8kG">
+                                            <modifierMask key="keyEquivalentModifierMask"/>
+                                            <connections>
+                                                <action selector="testGlobalSearchCustom:" target="Voe-Tx-rLC" id="VoT-S7-2I2"/>
                                             </connections>
                                         </menuItem>
                                         <menuItem title="Clear Search" id="wPE-gv-sjg" userLabel="Clear Search">

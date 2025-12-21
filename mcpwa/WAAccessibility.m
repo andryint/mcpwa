@@ -392,30 +392,49 @@
 
 #pragma mark - Chat List
 
-- (NSArray<WAChat *> *)getChats {
+- (NSArray<WAChat *> *)getRecentChats {
     AXUIElementRef window = [self getMainWindow];
     if (!window) return @[];
     
+    if ([self isInSearchMode]) {
+        [WALogger debug:@"getRecentChats: we need to close search before"];
+        [self clearSearch];
+        [NSThread sleepForTimeInterval:0.3];
+    }
+    
     NSMutableArray<WAChat *> *chats = [NSMutableArray array];
     
-    // Find all ChatSessionCell buttons (returns retained elements)
-    NSArray *buttons = [self findElementsIn:window predicate:^BOOL(AXUIElementRef element, NSString *role, NSString *identifier) {
-        return [role isEqualToString:@"AXButton"] && 
-               [identifier hasPrefix:@"ChatSessionCell_"];
-    } maxDepth:15];
+    // Find the ChatListView_TableView container first
+    AXUIElementRef tableView = [self findElementWithIdentifier:@"ChatListView_TableView" inElement:window];
+    if (!tableView) {
+        [WALogger debug:@"getChats: Could not find ChatListView_TableView"];
+        CFRelease(window);
+        return @[];
+    }
+    
+    // Get direct children of the table view - these are chat buttons
+    NSArray *children = [self childrenOfElement:tableView];
     
     NSInteger index = 0;
-    for (id btn in buttons) {
-        AXUIElementRef button = (__bridge AXUIElementRef)btn;
+    for (id child in children) {
+        AXUIElementRef element = (__bridge AXUIElementRef)child;
+        
+        NSString *role = [self roleOfElement:element];
+        if (![role isEqualToString:@"AXButton"]) continue;
+        
+        NSString *desc = [self descriptionOfElement:element];
+        NSString *value = [self valueOfElement:element];
+        
+        // Skip filter buttons (they have values like "1 of 4", "2 of 4")
+        if (value && [value containsString:@" of "]) continue;
+        
+        // Skip buttons without a proper name
+        if (!desc || desc.length == 0) continue;
         
         WAChat *chat = [[WAChat alloc] init];
         chat.index = index++;
+        chat.name = desc;
         
-        // Name is in AXDescription
-        chat.name = [self descriptionOfElement:button] ?: @"Unknown";
-        
-        // Preview info is in AXValue
-        NSString *value = [self valueOfElement:button];
         if (value) {
             [self parseChatValue:value intoChat:chat];
         }
@@ -423,14 +442,16 @@
         [chats addObject:chat];
     }
     
-    // Release all elements in the buttons array
-    for (id btn in buttons) {
-        CFRelease((__bridge AXUIElementRef)btn);
+    [WALogger debug:@"Found %lu chats", (unsigned long)chats.count];
+    for(WAChat* chat in chats) {
+        [WALogger debug:@"\t * %@", chat.name];
     }
     
+    CFRelease(tableView);
     CFRelease(window);
     return chats;
 }
+
 
 - (void)parseChatValue:(NSString *)value intoChat:(WAChat *)chat {
     // Format examples:
@@ -537,7 +558,7 @@
 
     // Step 2b: In chat list mode - search the visible chat list
     [WALogger debug:@"findChatWithName: searching visible chat list"];
-    NSArray<WAChat *> *chats = [self getChats];
+    NSArray<WAChat *> *chats = [self getRecentChats];
     [WALogger debug:@"findChatWithName: got %lu chats in list", (unsigned long)chats.count];
 
     for (WAChat *chat in chats) {
@@ -596,7 +617,8 @@
     return foundChat;
 }
 
-- (BOOL)openChat:(WAChat *)chat {
+- (BOOL)openChat:(WAChat *)chat
+{
     if (!chat) return NO;
     
     AXUIElementRef window = [self getMainWindow];
@@ -604,27 +626,53 @@
     
     BOOL result = NO;
     
-    // Find the button for this chat by matching description (name)
-    NSArray *buttons = [self findElementsIn:window predicate:^BOOL(AXUIElementRef element, NSString *role, NSString *identifier) {
-        if (![role isEqualToString:@"AXButton"] || ![identifier hasPrefix:@"ChatSessionCell_"]) {
-            return NO;
+    // First check if we're in search mode - buttons might be search results
+    BOOL inSearchMode = [self isInSearchMode];
+    
+    if (inSearchMode) {
+        // In search mode, look for ChatListSearchView_ChatResult buttons
+        NSArray *buttons = [self findElementsIn:window predicate:^BOOL(AXUIElementRef element, NSString *role, NSString *identifier) {
+            if (![role isEqualToString:@"AXButton"]) return NO;
+            // Search results have this identifier
+            if (![identifier isEqualToString:@"ChatListSearchView_ChatResult"]) return NO;
+            NSString *desc = [self descriptionOfElement:element];
+            return desc && [[desc lowercaseString] containsString:[chat.name lowercaseString]];
+        } maxDepth:15];
+        
+        if (buttons.count > 0) {
+            result = [self pressElement:(__bridge AXUIElementRef)buttons[0]];
         }
-        NSString *desc = [self descriptionOfElement:element];
-        return desc && [desc isEqualToString:chat.name];
-    } maxDepth:15];
-    
-    if (buttons.count > 0) {
-        result = [self pressElement:(__bridge AXUIElementRef)buttons[0]];
-    }
-    
-    // Release all found elements
-    for (id btn in buttons) {
-        CFRelease((__bridge AXUIElementRef)btn);
+        
+        for (id btn in buttons) {
+            CFRelease((__bridge AXUIElementRef)btn);
+        }
+    } else {
+        // In normal chat list mode - find ChatListView_TableView and look for button
+        AXUIElementRef tableView = [self findElementWithIdentifier:@"ChatListView_TableView" inElement:window];
+        if (tableView) {
+            NSArray *children = [self childrenOfElement:tableView];
+            
+            for (id child in children) {
+                AXUIElementRef element = (__bridge AXUIElementRef)child;
+                
+                NSString *role = [self roleOfElement:element];
+                if (![role isEqualToString:@"AXButton"]) continue;
+                
+                NSString *desc = [self descriptionOfElement:element];
+                if (desc && [[desc lowercaseString] containsString:[chat.name lowercaseString]]) {
+                    result = [self pressElement:element];
+                    break;
+                }
+            }
+            
+            CFRelease(tableView);
+        }
     }
     
     CFRelease(window);
     return result;
 }
+
 
 - (BOOL)openChatWithName:(NSString *)name {
     WAChat *chat = [self findChatWithName:name];
@@ -634,149 +682,100 @@
 
 #pragma mark - Current Chat
 
-- (WACurrentChat *)getCurrentChat {
+- (WACurrentChat *)getCurrentChat
+{
     AXUIElementRef window = [self getMainWindow];
     if (!window) return nil;
     
-    WACurrentChat *currentChat = nil;
+    WACurrentChat *currentChat = [[WACurrentChat alloc] init];
     
-    // Find the toolbar that shows current chat info
-    // Look for AXHeading with chat name description
-    AXUIElementRef chatHeader = [self findFirstElementIn:window predicate:^BOOL(AXUIElementRef element, NSString *role, NSString *identifier) {
-        if (![role isEqualToString:@"AXGroup"]) return NO;
-        // The chat header group contains the name as a button
-        NSString *desc = [self descriptionOfElement:element];
-        return desc && [desc containsString:@"last seen"];
-    } maxDepth:15];
+    // Find the chat header - it's an AXHeading with id NavigationBar_HeaderViewButton
+    AXUIElementRef chatHeader = [self findElementWithIdentifier:@"NavigationBar_HeaderViewButton" inElement:window];
     
     if (chatHeader) {
-        currentChat = [[WACurrentChat alloc] init];
+        // Name is in description, "last seen" status is in value
+        currentChat.name = [self descriptionOfElement:chatHeader];
+        currentChat.lastSeen = [self valueOfElement:chatHeader];
+        CFRelease(chatHeader);
+    }
+    
+    // Get messages
+    currentChat.messages = [self getMessages];
+    
+    CFRelease(window);
+    
+    // Return nil if no chat is open (no name and no messages)
+    if (!currentChat.name && currentChat.messages.count == 0) {
+        return nil;
+    }
+    
+    return currentChat;
+}
+
+- (NSArray<WAMessage *> *)getMessagesWithLimit:(NSInteger)limit
+{
+    AXUIElementRef window = [self getMainWindow];
+    if (!window) return @[];
+    
+    NSMutableArray<WAMessage *> *messages = [NSMutableArray array];
+    
+    // Find the messages table - it's ChatMessagesTableView
+    AXUIElementRef messagesTable = [self findElementWithIdentifier:@"ChatMessagesTableView" inElement:window];
+    
+    if (!messagesTable) {
+        [WALogger debug:@"getMessages: ChatMessagesTableView not found"];
+        CFRelease(window);
+        return @[];
+    }
+    
+    // Get direct children of the messages table
+    NSArray *children = [self childrenOfElement:messagesTable];
+    
+    NSInteger count = 0;
+    for (id child in children) {
+        if (count >= limit) break;
         
-        // Try to find the name in the header area
-        AXUIElementRef nameElement = [self findFirstElementIn:chatHeader predicate:^BOOL(AXUIElementRef element, NSString *role, NSString *identifier) {
-            return [role isEqualToString:@"AXStaticText"] || [role isEqualToString:@"AXButton"];
-        } maxDepth:5];
+        AXUIElementRef element = (__bridge AXUIElementRef)child;
+        NSString *identifier = [self identifierOfElement:element];
         
-        if (nameElement) {
-            currentChat.name = [self descriptionOfElement:nameElement] ?: [self valueOfElement:nameElement];
-            CFRelease(nameElement);
+        // Message cells have id WAMessageBubbleTableViewCell
+        if (![identifier isEqualToString:@"WAMessageBubbleTableViewCell"]) {
+            continue;
         }
         
-        currentChat.lastSeen = [self descriptionOfElement:chatHeader];
-        currentChat.messages = [self getMessages];
-        
-        CFRelease(chatHeader);
-    } else {
-        // Alternative approach: look for the conversation view elements
-        currentChat = [[WACurrentChat alloc] init];
-        currentChat.messages = [self getMessages];
-        
-        // Try to get name from different location
-        AXUIElementRef nameButton = [self findFirstElementIn:window predicate:^BOOL(AXUIElementRef element, NSString *role, NSString *identifier) {
-            return [identifier isEqualToString:@"ConversationDetailsView_NameButton"];
-        } maxDepth:15];
-        
-        if (nameButton) {
-            currentChat.name = [self descriptionOfElement:nameButton];
-            CFRelease(nameButton);
+        // The actual message content is in an AXGenericElement child
+        NSArray *cellChildren = [self childrenOfElement:element];
+        for (id cellChild in cellChildren) {
+            AXUIElementRef contentElement = (__bridge AXUIElementRef)cellChild;
+            NSString *role = [self roleOfElement:contentElement];
+            
+            // Look for AXGenericElement which contains the message description
+            if ([role isEqualToString:@"AXGenericElement"]) {
+                NSString *desc = [self descriptionOfElement:contentElement];
+                if (desc && desc.length > 0) {
+                    WAMessage *message = [self parseMessageDescription:desc];
+                    if (message && message.text.length > 0) {
+                        [messages addObject:message];
+                        count++;
+                    }
+                }
+                break; // Only one content element per cell
+            }
         }
     }
     
+    [WALogger debug:@"getMessages: found %lu messages", (unsigned long)messages.count];
+    
+    CFRelease(messagesTable);
     CFRelease(window);
-    return currentChat;
+    return messages;
 }
+
 
 - (NSArray<WAMessage *> *)getMessages {
     return [self getMessagesWithLimit:50];
 }
 
-- (NSArray<WAMessage *> *)getMessagesWithLimit:(NSInteger)limit {
-    AXUIElementRef window = [self getMainWindow];
-    if (!window) return @[];
-    
-    NSMutableArray<WAMessage *> *messages = [NSMutableArray array];
-    NSMutableArray *allFoundElements = [NSMutableArray array]; // Track for cleanup
-    
-    @try {
-        // Find the messages table/list
-        AXUIElementRef messagesTable = [self findFirstElementIn:window predicate:^BOOL(AXUIElementRef element, NSString *role, NSString *identifier) {
-            return [identifier isEqualToString:@"ConversationTableView"];
-        } maxDepth:15];
-        
-        if (!messagesTable) {
-            CFRelease(window);
-            return @[];
-        }
-        
-        // Find message groups within the table
-        NSArray *messageGroups = [self findElementsIn:messagesTable predicate:^BOOL(AXUIElementRef element, NSString *role, NSString *identifier) {
-            // Look for the message row groups
-            return [identifier hasPrefix:@"ConversationMessageCell_"] || 
-                   [identifier isEqualToString:@"ConversationSystemMessageCell"];
-        } maxDepth:10];
-        [allFoundElements addObjectsFromArray:messageGroups];
-        
-        // If that doesn't work, try finding AXGroup elements with message descriptions
-        if (messageGroups.count == 0) {
-            messageGroups = [self findElementsIn:messagesTable predicate:^BOOL(AXUIElementRef element, NSString *role, NSString *identifier) {
-                if (![role isEqualToString:@"AXGroup"]) return NO;
-                NSString *desc = [self descriptionOfElement:element];
-                // Messages have descriptions starting with "message," or "Your message,"
-                return desc && ([desc hasPrefix:@"message,"] || 
-                               [desc hasPrefix:@"Your message,"] ||
-                               [desc hasPrefix:@"Replying to"]);
-            } maxDepth:10];
-            [allFoundElements addObjectsFromArray:messageGroups];
-        }
-        
-        NSInteger count = 0;
-        for (id grp in messageGroups) {
-            if (count >= limit) break;
-            
-            AXUIElementRef group = (__bridge AXUIElementRef)grp;
-            NSString *desc = [self descriptionOfElement:group];
-            
-            if (desc) {
-                WAMessage *message = [self parseMessageDescription:desc];
-                if (message && message.text.length > 0) {
-                    // Try to find reactions within this message group
-                    NSArray *reactionButtons = [self findElementsIn:group predicate:^BOOL(AXUIElementRef element, NSString *role, NSString *identifier) {
-                        return identifier && [identifier isEqualToString:@"WAMessageReactionsSliceView"];
-                    } maxDepth:3];
-                    [allFoundElements addObjectsFromArray:reactionButtons];
-                    
-                    if (reactionButtons.count > 0) {
-                        NSMutableArray *reactions = [NSMutableArray array];
-                        for (id rb in reactionButtons) {
-                            if (!rb || rb == [NSNull null]) continue;
-                            NSString *reactionDesc = [self descriptionOfElement:(__bridge AXUIElementRef)rb];
-                            // Format: "Reaction: 👍"
-                            if (reactionDesc && [reactionDesc hasPrefix:@"Reaction: "]) {
-                                [reactions addObject:[reactionDesc substringFromIndex:10]];
-                            }
-                        }
-                        message.reactions = reactions;
-                    }
-                    
-                    [messages addObject:message];
-                    count++;
-                }
-            }
-        }
-    } @catch (NSException *exception) {
-        NSLog(@"WAAccessibility: Exception in getMessagesWithLimit: %@", exception);
-    }
-    
-    // Release all found elements
-    for (id elem in allFoundElements) {
-        if (elem && elem != [NSNull null]) {
-            CFRelease((__bridge AXUIElementRef)elem);
-        }
-    }
-    
-    CFRelease(window);
-    return messages;
-}
 
 - (WAMessage *)parseMessageDescription:(NSString *)desc {
     // Format examples:

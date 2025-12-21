@@ -182,7 +182,7 @@ static NSString * const kServerVersion = @"1.0.0";
         },
         @{
             @"name": @"whatsapp_list_chats",
-            @"description": @"Get list of all visible WhatsApp chats with last message preview. Returns chat names, last messages, timestamps, and whether chats are pinned or group chats.",
+            @"description": @"Get list of recent visible WhatsApp chats with last message preview. Returns chat names, last messages, timestamps, and whether chats are pinned or group chats.",
             @"inputSchema": @{
                 @"type": @"object",
                 @"properties": @{},
@@ -296,7 +296,7 @@ static NSString * const kServerVersion = @"1.0.0";
     if ([toolName isEqualToString:@"whatsapp_status"]) {
         [self toolStatus:requestId];
     } else if ([toolName isEqualToString:@"whatsapp_list_chats"]) {
-        [self toolListChats:requestId];
+        [self toolListRecentChats:requestId];
     } else if ([toolName isEqualToString:@"whatsapp_get_current_chat"]) {
         [self toolGetCurrentChat:requestId];
     } else if ([toolName isEqualToString:@"whatsapp_open_chat"]) {
@@ -353,10 +353,11 @@ static NSString * const kServerVersion = @"1.0.0";
     [self sendToolResult:[self jsonStringPretty:status] id:requestId];
 }
 
-- (void)toolListChats:(id)requestId {
+- (void)toolListRecentChats:(id)requestId
+{
     if (![self checkPrerequisites:requestId]) return;
     
-    NSArray<WAChat *> *chats = [[WAAccessibility shared] getChats];
+    NSArray<WAChat *> *chats = [[WAAccessibility shared] getRecentChats];
     
     NSMutableArray *chatDicts = [NSMutableArray arrayWithCapacity:chats.count];
     for (WAChat *chat in chats) {
@@ -368,12 +369,11 @@ static NSString * const kServerVersion = @"1.0.0";
         @"chats": chatDicts
     };
     
-    [self log:[NSString stringWithFormat:@"   Found %lu chats", (unsigned long)chats.count] 
-        color:NSColor.systemGrayColor];
     [self sendToolResult:[self jsonStringPretty:result] id:requestId];
 }
 
-- (void)toolGetCurrentChat:(id)requestId {
+- (void)toolGetCurrentChat:(id)requestId
+{
     if (![self checkPrerequisites:requestId]) return;
     
     WAAccessibility *wa = [WAAccessibility shared];

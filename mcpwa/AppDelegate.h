@@ -30,6 +30,7 @@
 - (IBAction)debugClickA:(id)sender;
 - (IBAction)debugClickX:(id)sender;
 - (IBAction)debugTypeInABC:(id)sender;
+- (IBAction)debugReadChatList:(id)sender;
 
 
 @end

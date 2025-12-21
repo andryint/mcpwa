@@ -1,17 +1,13 @@
-//
-//  WAAccessibilityTest.m
-//  mcpwa
-//
-//  Call [WAAccessibilityTest runAllTests] to verify the accessibility layer works
-//
+
+#import <Cocoa/Cocoa.h>
+#import <ApplicationServices/ApplicationServices.h>
+#import <Carbon/Carbon.h>
 
 #import "WAAccessibilityTest.h"
 #import "WAAccessibility.h"
 #import "WASearchResult.h"
 #import "WASearchResultsAccessor.h"
-#import <Cocoa/Cocoa.h>
-#import <ApplicationServices/ApplicationServices.h>
-#import <Carbon/Carbon.h>
+#import "WALogger.h"
 
 @implementation WAAccessibilityTest
 
@@ -38,7 +34,7 @@
     // Test 2: Get chat list
     NSLog(@"");
     NSLog(@"[TEST 2] Get Chat List");
-    NSArray<WAChat *> *chats = [wa getChats];
+    NSArray<WAChat *> *chats = [wa getRecentChats];
     NSLog(@"  Found %lu chats", (unsigned long)chats.count);
     
     for (NSInteger i = 0; i < MIN(5, chats.count); i++) {
@@ -836,6 +832,22 @@
     }
         
     CFRelease(window);
+}
+
++(void) testGetCurrentChat
+{
+    WAAccessibility *wa = [WAAccessibility shared];
+    
+    WACurrentChat *current = [wa getCurrentChat];
+    
+    if (!current) {
+        [WALogger error:@"   No chat open"];
+        return;
+    }
+    
+    for (WAMessage *msg in current.messages) {
+        [WALogger error:@"\t %@", msg.text];
+    }
 }
 
 

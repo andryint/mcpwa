@@ -5,6 +5,7 @@
 
 #import <Foundation/Foundation.h>
 #import <ApplicationServices/ApplicationServices.h>
+#import "WAAccessibility.h"
 
 @interface WAAccessibilityTest : NSObject
 
@@ -49,8 +50,6 @@
 +(void) testPressA;
 +(void) testPressX;
 +(void) testTypeInABC;
-
-
-
++(void) testGetCurrentChat;
 
 @end
