@@ -74,7 +74,7 @@
                                               styleMask:style
                                                 backing:NSBackingStoreBuffered
                                                   defer:NO];
-    self.window.title = @"WhatsAppMCP Server";
+    self.window.title = @"WhatsApp Connector";
     self.window.minSize = NSMakeSize(600, 400);
     
     // Create content view with padding
@@ -146,7 +146,7 @@
     
     // Welcome message
     [self appendLog:@"╔══════════════════════════════════════════════════════════════╗" color:NSColor.cyanColor];
-    [self appendLog:@"║           WhatsAppMCP Server v1.0                            ║" color:NSColor.cyanColor];
+    [self appendLog:@"║           WhatsApp Connector v1.0                            ║" color:NSColor.cyanColor];
     [self appendLog:@"║   MCP Server for WhatsApp Desktop via Accessibility API      ║" color:NSColor.cyanColor];
     [self appendLog:@"╚══════════════════════════════════════════════════════════════╝" color:NSColor.cyanColor];
     [self appendLog:@""];
