@@ -34,10 +34,8 @@
                                                  name:WALogNotification
                                                object:nil];
     
-    // Auto-start server if launched with --autostart or transport argument
-    if ([self shouldAutoStart]) {
-        [self startServer];
-    }
+    // Auto-start server on launch
+    [self startServer];
 }
 
 - (void)parseCommandLineArguments {
@@ -62,18 +60,6 @@
             }
         }
     }
-}
-
-- (BOOL)shouldAutoStart {
-    NSArray *args = [[NSProcessInfo processInfo] arguments];
-    for (NSString *arg in args) {
-        if ([arg isEqualToString:@"--autostart"] ||
-            [arg isEqualToString:@"--stdio"] ||
-            [arg isEqualToString:@"--socket"]) {
-            return YES;
-        }
-    }
-    return NO;
 }
 
 - (void)setupWindow {
@@ -110,17 +96,8 @@
     self.statusLabel.autoresizingMask = NSViewWidthSizable;
     [toolbar addSubview:self.statusLabel];
     
-    // Start/Stop button
-    self.startStopButton = [[NSButton alloc] initWithFrame:NSMakeRect(680, 10, 100, 30)];
-    self.startStopButton.bezelStyle = NSBezelStyleRounded;
-    self.startStopButton.title = @"Start Server";
-    self.startStopButton.target = self;
-    self.startStopButton.action = @selector(toggleServer:);
-    self.startStopButton.autoresizingMask = NSViewMinXMargin;
-    [toolbar addSubview:self.startStopButton];
-    
-    // Check Permissions button
-    NSButton *permButton = [[NSButton alloc] initWithFrame:NSMakeRect(550, 10, 120, 30)];
+    // Check Status button (pinned to right)
+    NSButton *permButton = [[NSButton alloc] initWithFrame:NSMakeRect(660, 10, 120, 30)];
     permButton.bezelStyle = NSBezelStyleRounded;
     permButton.title = @"Check Status";
     permButton.target = self;
@@ -227,7 +204,7 @@
         }
         color = self.server.isConnected ? NSColor.greenColor : NSColor.orangeColor;
     } else {
-        status = @"🟢 Ready - Click 'Start Server' to begin";
+        status = @"🟢 Ready";
         color = NSColor.greenColor;
     }
     
@@ -236,14 +213,6 @@
 }
 
 #pragma mark - Actions
-
-- (void)toggleServer:(id)sender {
-    if (self.serverRunning) {
-        [self stopServer];
-    } else {
-        [self startServer];
-    }
-}
 
 - (void)startServer {
     BOOL hasPermission = AXIsProcessTrusted();
@@ -292,7 +261,6 @@
     }
     
     self.serverRunning = YES;
-    self.startStopButton.title = @"Stop Server";
     [self updateStatusLabel];
     
     [self appendLog:[NSString stringWithFormat:@"✅ Server started - listening on %@", transportDesc]
@@ -308,7 +276,6 @@
     self.server = nil;
     
     self.serverRunning = NO;
-    self.startStopButton.title = @"Start Server";
     [self updateStatusLabel];
     
     [self appendLog:@"Server stopped" color:NSColor.yellowColor];

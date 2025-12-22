@@ -8,7 +8,6 @@
 @property (nonatomic, strong) NSWindow *window;
 @property (nonatomic, strong) NSTextView *logView;
 @property (nonatomic, strong) NSTextField *statusLabel;
-@property (nonatomic, strong) NSButton *startStopButton;
 
 - (void)appendLog:(NSString *)message;
 - (void)appendLog:(NSString *)message color:(NSColor *)color;
