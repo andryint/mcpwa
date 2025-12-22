@@ -7,15 +7,35 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		9558D1DA2EF82B3200152007 /* Foundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 9558D1D92EF82B3100152007 /* Foundation.framework */; };
 		956DA3E32EE88A1600756AEB /* ApplicationServices.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 956DA3E22EE88A1600756AEB /* ApplicationServices.framework */; };
 /* End PBXBuildFile section */
 
+/* Begin PBXCopyFilesBuildPhase section */
+		9558D1CE2EF82A9E00152007 /* CopyFiles */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = /usr/share/man/man1/;
+			dstSubfolderSpec = 0;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 1;
+		};
+/* End PBXCopyFilesBuildPhase section */
+
 /* Begin PBXFileReference section */
+		9558D1D02EF82A9E00152007 /* mcp-shim */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; path = "mcp-shim"; sourceTree = BUILT_PRODUCTS_DIR; };
+		9558D1D92EF82B3100152007 /* Foundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Foundation.framework; path = System/Library/Frameworks/Foundation.framework; sourceTree = SDKROOT; };
 		956DA3E22EE88A1600756AEB /* ApplicationServices.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = ApplicationServices.framework; path = System/Library/Frameworks/ApplicationServices.framework; sourceTree = SDKROOT; };
 		9582344D2EE863E800228F6B /* mcpwa.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = mcpwa.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
+		9558D1D12EF82A9E00152007 /* mcp-shim */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = "mcp-shim";
+			sourceTree = "<group>";
+		};
 		9582344F2EE863E800228F6B /* mcpwa */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			path = mcpwa;
@@ -24,6 +44,14 @@
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
+		9558D1CD2EF82A9E00152007 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				9558D1DA2EF82B3200152007 /* Foundation.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		9582344A2EE863E800228F6B /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
@@ -38,6 +66,7 @@
 		956DA3E12EE88A1600756AEB /* Frameworks */ = {
 			isa = PBXGroup;
 			children = (
+				9558D1D92EF82B3100152007 /* Foundation.framework */,
 				956DA3E22EE88A1600756AEB /* ApplicationServices.framework */,
 			);
 			name = Frameworks;
@@ -47,6 +76,7 @@
 			isa = PBXGroup;
 			children = (
 				9582344F2EE863E800228F6B /* mcpwa */,
+				9558D1D12EF82A9E00152007 /* mcp-shim */,
 				956DA3E12EE88A1600756AEB /* Frameworks */,
 				9582344E2EE863E800228F6B /* Products */,
 			);
@@ -56,6 +86,7 @@
 			isa = PBXGroup;
 			children = (
 				9582344D2EE863E800228F6B /* mcpwa.app */,
+				9558D1D02EF82A9E00152007 /* mcp-shim */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -63,6 +94,28 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
+		9558D1CF2EF82A9E00152007 /* mcp-shim */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 9558D1D62EF82A9E00152007 /* Build configuration list for PBXNativeTarget "mcp-shim" */;
+			buildPhases = (
+				9558D1CC2EF82A9E00152007 /* Sources */,
+				9558D1CD2EF82A9E00152007 /* Frameworks */,
+				9558D1CE2EF82A9E00152007 /* CopyFiles */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				9558D1D12EF82A9E00152007 /* mcp-shim */,
+			);
+			name = "mcp-shim";
+			packageProductDependencies = (
+			);
+			productName = "mcp-shim";
+			productReference = 9558D1D02EF82A9E00152007 /* mcp-shim */;
+			productType = "com.apple.product-type.tool";
+		};
 		9582344C2EE863E800228F6B /* mcpwa */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = 9582345F2EE863E900228F6B /* Build configuration list for PBXNativeTarget "mcpwa" */;
@@ -94,6 +147,9 @@
 				BuildIndependentTargetsInParallel = 1;
 				LastUpgradeCheck = 2610;
 				TargetAttributes = {
+					9558D1CF2EF82A9E00152007 = {
+						CreatedOnToolsVersion = 26.2;
+					};
 					9582344C2EE863E800228F6B = {
 						CreatedOnToolsVersion = 26.1.1;
 					};
@@ -114,6 +170,7 @@
 			projectRoot = "";
 			targets = (
 				9582344C2EE863E800228F6B /* mcpwa */,
+				9558D1CF2EF82A9E00152007 /* mcp-shim */,
 			);
 		};
 /* End PBXProject section */
@@ -129,6 +186,13 @@
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
+		9558D1CC2EF82A9E00152007 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		958234492EE863E800228F6B /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -139,6 +203,26 @@
 /* End PBXSourcesBuildPhase section */
 
 /* Begin XCBuildConfiguration section */
+		9558D1D42EF82A9E00152007 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = L44NEN6XKE;
+				ENABLE_HARDENED_RUNTIME = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+			};
+			name = Debug;
+		};
+		9558D1D52EF82A9E00152007 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = L44NEN6XKE;
+				ENABLE_HARDENED_RUNTIME = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+			};
+			name = Release;
+		};
 		9582345D2EE863E900228F6B /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -321,6 +405,15 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
+		9558D1D62EF82A9E00152007 /* Build configuration list for PBXNativeTarget "mcp-shim" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				9558D1D42EF82A9E00152007 /* Debug */,
+				9558D1D52EF82A9E00152007 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
 		958234482EE863E800228F6B /* Build configuration list for PBXProject "mcpwa" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (

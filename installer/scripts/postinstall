@@ -1,0 +1,45 @@
+#!/bin/bash
+# installer/scripts/postinstall
+
+CLAUDE_CONFIG_DIR="$HOME/Library/Application Support/Claude"
+CLAUDE_CONFIG="$CLAUDE_CONFIG_DIR/claude_desktop_config.json"
+SHIM_PATH="/Applications/mcpwa.app/Contents/MacOS/mcp-shim"
+
+# Create directory if needed
+mkdir -p "$CLAUDE_CONFIG_DIR"
+
+# Modify config with Python (always available on macOS)
+/usr/bin/python3 << EOF
+import json
+import os
+import sys
+
+config_path = os.path.expanduser("~/Library/Application Support/Claude/claude_desktop_config.json")
+shim_path = "$SHIM_PATH"
+
+# Load existing or create new
+try:
+    with open(config_path, 'r') as f:
+        config = json.load(f)
+except (FileNotFoundError, json.JSONDecodeError):
+    config = {}
+
+# Ensure mcpServers exists
+if 'mcpServers' not in config:
+    config['mcpServers'] = {}
+
+# Add mcpwa entry
+config['mcpServers']['mcpwa'] = {
+    "command": shim_path,
+    "args": []
+}
+
+# Write back
+with open(config_path, 'w') as f:
+    json.dump(config, f, indent=2)
+
+print("✓ mcpwa registered with Claude Desktop")
+EOF
+
+exit 0
+
