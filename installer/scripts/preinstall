@@ -1,0 +1,12 @@
+#!/bin/bash
+# Check if Claude Desktop is installed
+
+CLAUDE_APP="/Applications/Claude.app"
+
+if [ ! -d "$CLAUDE_APP" ]; then
+    osascript -e 'display dialog "Claude Desktop must be installed before installing mcpwa.\n\nPlease download and install Claude from:\nhttps://claude.ai/download" with title "mcpwa Installer" buttons {"OK"} default button "OK" with icon stop'
+    exit 1
+fi
+
+exit 0
+

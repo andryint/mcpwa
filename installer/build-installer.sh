@@ -54,7 +54,7 @@ cp -R "$APP_PATH" "$PKG_ROOT/Applications/"
 echo "=== Building PKG ==="
 
 pkgbuild --root "$PKG_ROOT" \
-         --component-plist "$BUILD_DIR/component.plist" \
+		 --component-plist "$SCRIPT_DIR/component.plist" \
          --scripts "$SCRIPT_DIR/scripts" \
          --identifier "$IDENTIFIER" \
          --version "$VERSION" \

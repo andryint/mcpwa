@@ -726,5 +726,45 @@
 }
 
 
+- (IBAction)uninstallApp:(id)sender {
+    NSAlert *alert = [[NSAlert alloc] init];
+    alert.messageText = @"Uninstall mcpwa?";
+    alert.informativeText = @"This will remove mcpwa from Claude Desktop and quit the app. You can then drag mcpwa to Trash.";
+    [alert addButtonWithTitle:@"Uninstall"];
+    [alert addButtonWithTitle:@"Cancel"];
+    
+    if ([alert runModal] == NSAlertFirstButtonReturn) {
+        [self removeFromClaudeConfig];
+        
+        NSAlert *done = [[NSAlert alloc] init];
+        done.messageText = @"mcpwa unregistered";
+        done.informativeText = @"You can now drag mcpwa from Applications to Trash.";
+        [done runModal];
+        
+        [NSApp terminate:nil];
+    }
+}
+
+- (void)removeFromClaudeConfig {
+    NSString *configPath = [NSHomeDirectory() stringByAppendingPathComponent:
+        @"Library/Application Support/Claude/claude_desktop_config.json"];
+    
+    NSData *data = [NSData dataWithContentsOfFile:configPath];
+    if (!data) return;
+    
+    NSError *error;
+    NSMutableDictionary *config = [NSJSONSerialization JSONObjectWithData:data
+        options:NSJSONReadingMutableContainers error:&error];
+    if (!config) return;
+    
+    NSMutableDictionary *servers = config[@"mcpServers"];
+    if (servers && servers[@"mcpwa"]) {
+        [servers removeObjectForKey:@"mcpwa"];
+        
+        NSData *newData = [NSJSONSerialization dataWithJSONObject:config
+            options:NSJSONWritingPrettyPrinted error:&error];
+        [newData writeToFile:configPath atomically:YES];
+    }
+}
 
 @end
