@@ -104,7 +104,7 @@
     NSView *contentView = self.window.contentView;
 
     // === Log area ===
-    NSScrollView *scrollView = [[NSScrollView alloc] initWithFrame:NSMakeRect(10, 60, 780, 440)];
+    NSScrollView *scrollView = [[NSScrollView alloc] initWithFrame:NSMakeRect(10, 10, 780, 490)];
     scrollView.hasVerticalScroller = YES;
     scrollView.hasHorizontalScroller = NO;
     scrollView.autohidesScrollers = YES;
@@ -125,19 +125,7 @@
     
     scrollView.documentView = self.logView;
     [contentView addSubview:scrollView];
-    
-    // === Bottom info area ===
-    NSTextField *infoLabel = [[NSTextField alloc] initWithFrame:NSMakeRect(10, 10, 780, 40)];
-    infoLabel.bezeled = NO;
-    infoLabel.editable = NO;
-    infoLabel.selectable = YES;
-    infoLabel.backgroundColor = NSColor.clearColor;
-    infoLabel.font = [NSFont systemFontOfSize:11];
-    infoLabel.textColor = NSColor.secondaryLabelColor;
-    infoLabel.stringValue = @"Configure in Claude Desktop: ~/Library/Application Support/Claude/claude_desktop_config.json\nAdd: { \"mcpServers\": { \"whatsapp\": { \"command\": \"/path/to/mcpwa.app/Contents/MacOS/mcpwa\" } } }";
-    infoLabel.autoresizingMask = NSViewWidthSizable | NSViewMaxYMargin;
-    [contentView addSubview:infoLabel];
-    
+
     // Show window
     [self.window makeKeyAndOrderFront:nil];
     [NSApp activateIgnoringOtherApps:YES];
