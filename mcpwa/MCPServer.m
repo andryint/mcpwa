@@ -262,13 +262,18 @@ static NSString * const kServerVersion = @"1.0.0";
         },
         @{
             @"name": @"whatsapp_search",
-            @"description": @"Global search across all WhatsApp chats. Searches for keywords in chat names and message content. Returns two lists: chats whose names match the query, and individual messages containing the query text.",
+            @"description": @"Global search across all WhatsApp chats. Searches for keywords in chat names and message content. Returns two lists: chats whose names match the query, and individual messages containing the query text. Optionally filter by: 'all' (default), 'unread', 'favorites', or 'groups'.",
             @"inputSchema": @{
                 @"type": @"object",
                 @"properties": @{
                     @"query": @{
                         @"type": @"string",
                         @"description": @"Search query - keywords to find in chat names and message content"
+                    },
+                    @"filter": @{
+                        @"type": @"string",
+                        @"description": @"Optional filter: 'all' (default), 'unread', 'favorites', or 'groups'",
+                        @"enum": @[@"all", @"unread", @"favorites", @"groups"]
                     }
                 },
                 @"required": @[@"query"]
@@ -342,7 +347,7 @@ static NSString * const kServerVersion = @"1.0.0";
     } else if ([toolName isEqualToString:@"whatsapp_send_message"]) {
         [self toolSendMessage:args[@"message"] id:requestId];
     } else if ([toolName isEqualToString:@"whatsapp_search"]) {
-        [self toolGlobalSearch:args[@"query"] id:requestId];
+        [self toolGlobalSearch:args[@"query"] filter:args[@"filter"] id:requestId];
     } else if ([toolName isEqualToString:@"whatsapp_clear_search"]) {
         [self toolClearSearch:requestId];
     } else {
@@ -564,17 +569,26 @@ static NSString * const kServerVersion = @"1.0.0";
     }
 }
 
-- (void)toolGlobalSearch:(NSString *)query id:(id)requestId {
+- (void)toolGlobalSearch:(NSString *)query filter:(NSString *)filterName id:(id)requestId {
     if (![self checkPrerequisites:requestId]) return;
-    
+
     if (!query || query.length == 0) {
         [self sendToolError:@"Search query is required" id:requestId];
         return;
     }
-    
-    [self log:[NSString stringWithFormat:@"   Searching: %@", query] color:NSColor.systemGrayColor];
-    
+
     WAAccessibility *wa = [WAAccessibility shared];
+
+    // Apply filter if specified (default is "all")
+    WAChatFilter filter = WAChatFilterAll;
+    if (filterName && filterName.length > 0) {
+        filter = [WAAccessibility chatFilterFromString:filterName];
+        [self log:[NSString stringWithFormat:@"   Setting filter: %@", [WAAccessibility stringFromChatFilter:filter]] color:NSColor.systemGrayColor];
+        [wa selectChatFilter:filter];
+    }
+
+    [self log:[NSString stringWithFormat:@"   Searching: %@", query] color:NSColor.systemGrayColor];
+
     WASearchResults *results = [wa globalSearch:query];
     
     if (!results) {

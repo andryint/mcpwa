@@ -108,13 +108,18 @@ NSArray* getMcpwaTools(void) {
         },
         @{
             @"name": @"whatsapp_search",
-            @"description": @"Global search across all WhatsApp chats. Searches for keywords in chat names and message content. Returns two lists: chats whose names match the query, and individual messages containing the query text.",
+            @"description": @"Global search across all WhatsApp chats. Searches for keywords in chat names and message content. Returns two lists: chats whose names match the query, and individual messages containing the query text. Optionally filter by: 'all' (default), 'unread', 'favorites', or 'groups'.",
             @"inputSchema": @{
                 @"type": @"object",
                 @"properties": @{
                     @"query": @{
                         @"type": @"string",
                         @"description": @"Search query - keywords to find in chat names and message content"
+                    },
+                    @"filter": @{
+                        @"type": @"string",
+                        @"description": @"Optional filter: 'all' (default), 'unread', 'favorites', or 'groups'",
+                        @"enum": @[@"all", @"unread", @"favorites", @"groups"]
                     }
                 },
                 @"required": @[@"query"]
