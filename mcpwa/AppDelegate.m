@@ -483,13 +483,52 @@
 }
 
 - (IBAction)debugGlobalSearchCustom:(id)sender {
-    NSString *query = [self showInputDialogWithTitle:@"Global Search Test"
-                                             message:@"Enter search query:"
-                                         placeholder:@"Enter search term..."
-                                        defaultValue:@""];
-    if (query) {
+    // Create alert with two fields: search query and filter
+    NSAlert *alert = [[NSAlert alloc] init];
+    alert.messageText = @"Global Search Test";
+    alert.informativeText = @"Enter search query and optional filter:";
+    alert.alertStyle = NSAlertStyleInformational;
+    [alert addButtonWithTitle:@"OK"];
+    [alert addButtonWithTitle:@"Cancel"];
+
+    // Create container view for both fields
+    NSView *container = [[NSView alloc] initWithFrame:NSMakeRect(0, 0, 250, 70)];
+
+    // Search query field
+    NSTextField *queryLabel = [[NSTextField alloc] initWithFrame:NSMakeRect(0, 46, 60, 20)];
+    queryLabel.stringValue = @"Query:";
+    queryLabel.bezeled = NO;
+    queryLabel.editable = NO;
+    queryLabel.drawsBackground = NO;
+    [container addSubview:queryLabel];
+
+    NSTextField *queryInput = [[NSTextField alloc] initWithFrame:NSMakeRect(60, 44, 185, 24)];
+    queryInput.placeholderString = @"Enter search term...";
+    [container addSubview:queryInput];
+
+    // Filter popup button
+    NSTextField *filterLabel = [[NSTextField alloc] initWithFrame:NSMakeRect(0, 10, 60, 20)];
+    filterLabel.stringValue = @"Filter:";
+    filterLabel.bezeled = NO;
+    filterLabel.editable = NO;
+    filterLabel.drawsBackground = NO;
+    [container addSubview:filterLabel];
+
+    NSPopUpButton *filterPopup = [[NSPopUpButton alloc] initWithFrame:NSMakeRect(60, 8, 185, 26) pullsDown:NO];
+    [filterPopup addItemWithTitle:@"All"];
+    [filterPopup addItemWithTitle:@"Unread"];
+    [filterPopup addItemWithTitle:@"Favorites"];
+    [filterPopup addItemWithTitle:@"Groups"];
+    [container addSubview:filterPopup];
+
+    alert.accessoryView = container;
+    [alert.window setInitialFirstResponder:queryInput];
+
+    if ([alert runModal] == NSAlertFirstButtonReturn && queryInput.stringValue.length > 0) {
+        NSString *query = queryInput.stringValue;
+        NSString *filter = [[filterPopup.titleOfSelectedItem lowercaseString] copy];
         dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
-            [WAAccessibilityTest testGlobalSearch:query];
+            [WAAccessibilityTest testGlobalSearchWithFilter:query filter:filter];
         });
     }
 }
@@ -606,6 +645,50 @@
     dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
         [WAAccessibilityTest testGetCurrentChat];
     });
+}
+
+#pragma mark - Chat Filter Debug Actions
+
+- (IBAction)debugGetChatFilter:(id)sender {
+    dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
+        [WAAccessibilityTest testGetChatFilter];
+    });
+}
+
+- (IBAction)debugSetFilterAll:(id)sender {
+    dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
+        [WAAccessibilityTest testSetChatFilter:@"all"];
+    });
+}
+
+- (IBAction)debugSetFilterUnread:(id)sender {
+    dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
+        [WAAccessibilityTest testSetChatFilter:@"unread"];
+    });
+}
+
+- (IBAction)debugSetFilterFavorites:(id)sender {
+    dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
+        [WAAccessibilityTest testSetChatFilter:@"favorites"];
+    });
+}
+
+- (IBAction)debugSetFilterGroups:(id)sender {
+    dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
+        [WAAccessibilityTest testSetChatFilter:@"groups"];
+    });
+}
+
+- (IBAction)debugListChatsWithFilter:(id)sender {
+    NSString *filter = [self showInputDialogWithTitle:@"List Chats With Filter"
+                                              message:@"Enter filter (all, unread, favorites, groups):"
+                                          placeholder:@"all"
+                                         defaultValue:@"unread"];
+    if (filter) {
+        dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
+            [WAAccessibilityTest testListChatsWithFilter:filter];
+        });
+    }
 }
 
 @end

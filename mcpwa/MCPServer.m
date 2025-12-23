@@ -182,10 +182,16 @@ static NSString * const kServerVersion = @"1.0.0";
         },
         @{
             @"name": @"whatsapp_list_chats",
-            @"description": @"Get list of recent visible WhatsApp chats with last message preview. Returns chat names, last messages, timestamps, and whether chats are pinned or group chats.",
+            @"description": @"Get list of recent visible WhatsApp chats with last message preview. Returns chat names, last messages, timestamps, and whether chats are pinned or group chats. Optionally filter by: 'all' (default), 'unread', 'favorites', or 'groups'.",
             @"inputSchema": @{
                 @"type": @"object",
-                @"properties": @{},
+                @"properties": @{
+                    @"filter": @{
+                        @"type": @"string",
+                        @"description": @"Optional filter: 'all' (default), 'unread', 'favorites', or 'groups'",
+                        @"enum": @[@"all", @"unread", @"favorites", @"groups"]
+                    }
+                },
                 @"required": @[]
             }
         },
@@ -276,6 +282,30 @@ static NSString * const kServerVersion = @"1.0.0";
                 @"properties": @{},
                 @"required": @[]
             }
+        },
+        @{
+            @"name": @"whatsapp_get_chat_filter",
+            @"description": @"Get the currently selected chat list filter (All, Unread, Favorites, or Groups).",
+            @"inputSchema": @{
+                @"type": @"object",
+                @"properties": @{},
+                @"required": @[]
+            }
+        },
+        @{
+            @"name": @"whatsapp_set_chat_filter",
+            @"description": @"Set the chat list filter to show only certain chats. Options: 'all', 'unread' (only unread chats), 'favorites' (only favorite/starred chats), 'groups' (only group chats).",
+            @"inputSchema": @{
+                @"type": @"object",
+                @"properties": @{
+                    @"filter": @{
+                        @"type": @"string",
+                        @"description": @"Filter to apply: 'all', 'unread', 'favorites', or 'groups'",
+                        @"enum": @[@"all", @"unread", @"favorites", @"groups"]
+                    }
+                },
+                @"required": @[@"filter"]
+            }
         }
     ];
     
@@ -296,7 +326,11 @@ static NSString * const kServerVersion = @"1.0.0";
     if ([toolName isEqualToString:@"whatsapp_status"]) {
         [self toolStatus:requestId];
     } else if ([toolName isEqualToString:@"whatsapp_list_chats"]) {
-        [self toolListRecentChats:requestId];
+        [self toolListRecentChats:args[@"filter"] id:requestId];
+    } else if ([toolName isEqualToString:@"whatsapp_get_chat_filter"]) {
+        [self toolGetChatFilter:requestId];
+    } else if ([toolName isEqualToString:@"whatsapp_set_chat_filter"]) {
+        [self toolSetChatFilter:args[@"filter"] id:requestId];
     } else if ([toolName isEqualToString:@"whatsapp_get_current_chat"]) {
         [self toolGetCurrentChat:requestId];
     } else if ([toolName isEqualToString:@"whatsapp_open_chat"]) {
@@ -353,22 +387,34 @@ static NSString * const kServerVersion = @"1.0.0";
     [self sendToolResult:[self jsonStringPretty:status] id:requestId];
 }
 
-- (void)toolListRecentChats:(id)requestId
+- (void)toolListRecentChats:(NSString *)filterString id:(id)requestId
 {
     if (![self checkPrerequisites:requestId]) return;
-    
-    NSArray<WAChat *> *chats = [[WAAccessibility shared] getRecentChats];
-    
+
+    WAAccessibility *wa = [WAAccessibility shared];
+    WAChatFilter filter = [WAAccessibility chatFilterFromString:filterString];
+
+    NSArray<WAChat *> *chats;
+    if (filterString && filterString.length > 0) {
+        chats = [wa getRecentChatsWithFilter:filter];
+    } else {
+        chats = [wa getRecentChats];
+    }
+
     NSMutableArray *chatDicts = [NSMutableArray arrayWithCapacity:chats.count];
     for (WAChat *chat in chats) {
         [chatDicts addObject:[self chatToDictionary:chat]];
     }
-    
+
+    NSString *filterName = [WAAccessibility stringFromChatFilter:filter];
     NSDictionary *result = @{
+        @"filter": filterName,
         @"count": @(chats.count),
         @"chats": chatDicts
     };
-    
+
+    [self log:[NSString stringWithFormat:@"   Filter: %@, Found %lu chats", filterName, (unsigned long)chats.count]
+        color:NSColor.systemGrayColor];
     [self sendToolResult:[self jsonStringPretty:result] id:requestId];
 }
 
@@ -565,10 +611,10 @@ static NSString * const kServerVersion = @"1.0.0";
 
 - (void)toolClearSearch:(id)requestId {
     if (![self checkPrerequisites:requestId]) return;
-    
+
     WAAccessibility *wa = [WAAccessibility shared];
     BOOL success = [wa clearSearch];
-    
+
     if (success) {
         [self log:@"   Search cleared" color:NSColor.greenColor];
         [self sendToolResult:@"Search cleared" id:requestId];
@@ -576,6 +622,64 @@ static NSString * const kServerVersion = @"1.0.0";
         [self log:@"   No active search to clear" color:NSColor.yellowColor];
         [self sendToolResult:@"No active search to clear" id:requestId];
     }
+}
+
+- (void)toolGetChatFilter:(id)requestId {
+    if (![self checkPrerequisites:requestId]) return;
+
+    WAAccessibility *wa = [WAAccessibility shared];
+    WAChatFilter filter = [wa getSelectedChatFilter];
+    NSString *filterName = [WAAccessibility stringFromChatFilter:filter];
+
+    NSDictionary *result = @{
+        @"filter": filterName,
+        @"description": [self filterDescription:filter]
+    };
+
+    [self log:[NSString stringWithFormat:@"   Current filter: %@", filterName] color:NSColor.systemGrayColor];
+    [self sendToolResult:[self jsonStringPretty:result] id:requestId];
+}
+
+- (void)toolSetChatFilter:(NSString *)filterString id:(id)requestId {
+    if (![self checkPrerequisites:requestId]) return;
+
+    if (!filterString || filterString.length == 0) {
+        [self sendToolError:@"Filter is required. Options: 'all', 'unread', 'favorites', 'groups'" id:requestId];
+        return;
+    }
+
+    WAAccessibility *wa = [WAAccessibility shared];
+    WAChatFilter filter = [WAAccessibility chatFilterFromString:filterString];
+    NSString *filterName = [WAAccessibility stringFromChatFilter:filter];
+
+    BOOL success = [wa selectChatFilter:filter];
+
+    if (success) {
+        NSDictionary *result = @{
+            @"success": @YES,
+            @"filter": filterName,
+            @"description": [self filterDescription:filter]
+        };
+        [self log:[NSString stringWithFormat:@"   Set filter: %@", filterName] color:NSColor.greenColor];
+        [self sendToolResult:[self jsonStringPretty:result] id:requestId];
+    } else {
+        [self log:[NSString stringWithFormat:@"   Failed to set filter: %@", filterName] color:NSColor.redColor];
+        [self sendToolError:[NSString stringWithFormat:@"Could not set filter to '%@'. Make sure WhatsApp is showing the chat list.", filterName] id:requestId];
+    }
+}
+
+- (NSString *)filterDescription:(WAChatFilter)filter {
+    switch (filter) {
+        case WAChatFilterAll:
+            return @"Showing all chats";
+        case WAChatFilterUnread:
+            return @"Showing only unread chats";
+        case WAChatFilterFavorites:
+            return @"Showing only favorite/starred chats";
+        case WAChatFilterGroups:
+            return @"Showing only group chats";
+    }
+    return @"Showing all chats";
 }
 
 #pragma mark - Data Conversion Helpers

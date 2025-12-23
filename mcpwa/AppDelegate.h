@@ -35,5 +35,12 @@
 - (IBAction)debugReadChatList:(id)sender;
 - (IBAction)debugGetCurrentChat:(id)sender;
 
+#pragma mark - Chat Filter Debug Actions
+- (IBAction)debugGetChatFilter:(id)sender;
+- (IBAction)debugSetFilterAll:(id)sender;
+- (IBAction)debugSetFilterUnread:(id)sender;
+- (IBAction)debugSetFilterFavorites:(id)sender;
+- (IBAction)debugSetFilterGroups:(id)sender;
+- (IBAction)debugListChatsWithFilter:(id)sender;
 
 @end

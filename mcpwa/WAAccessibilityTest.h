@@ -15,6 +15,9 @@
 /// Test global search with a query
 + (void)testGlobalSearch:(NSString *)query;
 
+/// Test global search with a query and filter
++ (void)testGlobalSearchWithFilter:(NSString *)query filter:(NSString *)filter;
+
 /// Test sending a message (use with caution!)
 + (void)testSendMessage:(NSString *)message;
 
@@ -53,5 +56,16 @@
 + (void)testGetCurrentChat;
 + (void)testReadChatList;
 + (void)testParsingUnitTests;
+
+#pragma mark - Chat Filter Tests
+
+/// Test getting the currently selected chat filter
++ (void)testGetChatFilter;
+
+/// Test setting a chat filter
++ (void)testSetChatFilter:(NSString *)filterName;
+
+/// Test listing chats with a specific filter
++ (void)testListChatsWithFilter:(NSString *)filterName;
 
 @end

@@ -11,6 +11,14 @@ NS_ASSUME_NONNULL_BEGIN
 
 #pragma mark - Data Models
 
+/// Chat list filter options (All, Unread, Favorites, Groups)
+typedef NS_ENUM(NSInteger, WAChatFilter) {
+    WAChatFilterAll = 0,
+    WAChatFilterUnread,
+    WAChatFilterFavorites,
+    WAChatFilterGroups
+};
+
 @interface WAChat : NSObject
 @property (nonatomic, copy) NSString *name;
 @property (nonatomic, copy) NSString *lastMessage;
@@ -90,10 +98,29 @@ typedef NS_ENUM(NSInteger, WAMessageDirection) {
 /// Check if WhatsApp is currently in search mode (search bar active with query)
 - (BOOL)isInSearchMode;
 
+#pragma mark - Chat List Filters
+
+/// Get the currently selected chat filter (All, Unread, Favorites, Groups)
+- (WAChatFilter)getSelectedChatFilter;
+
+/// Select a chat filter by pressing the corresponding button
+/// Returns YES if the filter was successfully selected
+- (BOOL)selectChatFilter:(WAChatFilter)filter;
+
+/// Convert filter enum to string for display/API
++ (NSString *)stringFromChatFilter:(WAChatFilter)filter;
+
+/// Convert string to filter enum (case-insensitive)
++ (WAChatFilter)chatFilterFromString:(NSString *)string;
+
 #pragma mark - Chat List
 
 /// Get list of visible chats
 - (NSArray<WAChat *> *)getRecentChats;
+
+/// Get list of visible chats with optional filter
+/// If filter is not WAChatFilterAll, will switch to that filter first
+- (NSArray<WAChat *> *)getRecentChatsWithFilter:(WAChatFilter)filter;
 
 /// Get chat by name (partial match)
 /// This method is smart about the current UI state:

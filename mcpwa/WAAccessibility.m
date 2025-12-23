@@ -441,7 +441,202 @@
     return inSearchMode;
 }
 
+#pragma mark - Chat List Filters
+
++ (NSString *)stringFromChatFilter:(WAChatFilter)filter {
+    switch (filter) {
+        case WAChatFilterAll:
+            return @"all";
+        case WAChatFilterUnread:
+            return @"unread";
+        case WAChatFilterFavorites:
+            return @"favorites";
+        case WAChatFilterGroups:
+            return @"groups";
+    }
+    return @"all";
+}
+
++ (WAChatFilter)chatFilterFromString:(NSString *)string {
+    if (!string || string.length == 0) {
+        return WAChatFilterAll;
+    }
+
+    NSString *lower = [string lowercaseString];
+    if ([lower isEqualToString:@"unread"]) {
+        return WAChatFilterUnread;
+    } else if ([lower isEqualToString:@"favorites"] || [lower isEqualToString:@"favourites"]) {
+        return WAChatFilterFavorites;
+    } else if ([lower isEqualToString:@"groups"]) {
+        return WAChatFilterGroups;
+    }
+    return WAChatFilterAll;
+}
+
+- (NSString *)filterButtonIdentifierForFilter:(WAChatFilter)filter {
+    // Filter buttons have AXValue like "1 of 4", "2 of 4" etc.
+    // But we identify them by their position/index (1-indexed in the UI)
+    // All=1, Unread=2, Favorites=3, Groups=4
+    // We need to find buttons by their description text instead
+    switch (filter) {
+        case WAChatFilterAll:
+            return @"All";
+        case WAChatFilterUnread:
+            return @"Unread";
+        case WAChatFilterFavorites:
+            return @"Favorites";
+        case WAChatFilterGroups:
+            return @"Groups";
+    }
+    return @"All";
+}
+
+- (WAChatFilter)getSelectedChatFilter {
+    AXUIElementRef window = [self getMainWindow];
+    if (!window) {
+        [WALogger warn:@"getSelectedChatFilter: no main window"];
+        return WAChatFilterAll;
+    }
+
+    // Find the ChatListView_filterCell container (filter buttons are nested inside)
+    AXUIElementRef filterCell = [self findElementWithIdentifier:@"ChatListView_filterCell" inElement:window];
+    if (!filterCell) {
+        [WALogger warn:@"getSelectedChatFilter: no ChatListView_filterCell"];
+        CFRelease(window);
+        return WAChatFilterAll;
+    }
+
+    // Find all buttons with " of " in their value (filter buttons)
+    NSArray *filterButtons = [self findElementsIn:filterCell predicate:^BOOL(AXUIElementRef element, NSString *role, NSString *identifier) {
+        if (![role isEqualToString:@"AXButton"]) return NO;
+
+        NSString *value = [self valueOfElement:element];
+        return value && [value containsString:@" of "];
+    } maxDepth:3];
+
+    WAChatFilter selectedFilter = WAChatFilterAll;
+
+    for (id child in filterButtons) {
+        AXUIElementRef element = (__bridge AXUIElementRef)child;
+
+        NSString *desc = [self descriptionOfElement:element];
+        if (!desc) continue;
+
+        // Check if this button is selected by looking at its "selected" attribute
+        CFTypeRef selectedValue = NULL;
+        AXError err = AXUIElementCopyAttributeValue(element, CFSTR("AXSelected"), &selectedValue);
+
+        BOOL isSelected = NO;
+        if (err == kAXErrorSuccess && selectedValue) {
+            if (CFGetTypeID(selectedValue) == CFBooleanGetTypeID()) {
+                isSelected = CFBooleanGetValue(selectedValue);
+            }
+            CFRelease(selectedValue);
+        }
+
+        if (isSelected) {
+            // Match the description to filter type
+            NSString *lowerDesc = [desc lowercaseString];
+            if ([lowerDesc containsString:@"unread"]) {
+                selectedFilter = WAChatFilterUnread;
+            } else if ([lowerDesc containsString:@"favorites"] || [lowerDesc containsString:@"favourites"]) {
+                selectedFilter = WAChatFilterFavorites;
+            } else if ([lowerDesc containsString:@"groups"]) {
+                selectedFilter = WAChatFilterGroups;
+            } else {
+                selectedFilter = WAChatFilterAll;
+            }
+            [WALogger debug:@"getSelectedChatFilter: found selected filter '%@' -> %@", desc, [WAAccessibility stringFromChatFilter:selectedFilter]];
+            break;
+        }
+    }
+
+    CFRelease(filterCell);
+    CFRelease(window);
+
+    return selectedFilter;
+}
+
+- (BOOL)selectChatFilter:(WAChatFilter)filter {
+    [WALogger info:@"selectChatFilter: %@", [WAAccessibility stringFromChatFilter:filter]];
+
+    AXUIElementRef window = [self getMainWindow];
+    if (!window) {
+        [WALogger error:@"selectChatFilter: no main window"];
+        return NO;
+    }
+
+    // Clear search mode first if active
+    if ([self isInSearchMode]) {
+        [WALogger debug:@"selectChatFilter: clearing search mode"];
+        [self clearSearch];
+        [NSThread sleepForTimeInterval:0.3];
+    }
+
+    // Find the ChatListView_filterCell container (filter buttons are nested inside)
+    AXUIElementRef filterCell = [self findElementWithIdentifier:@"ChatListView_filterCell" inElement:window];
+    if (!filterCell) {
+        [WALogger error:@"selectChatFilter: no ChatListView_filterCell"];
+        CFRelease(window);
+        return NO;
+    }
+
+    // Find all buttons with " of " in their value (filter buttons)
+    NSArray *filterButtons = [self findElementsIn:filterCell predicate:^BOOL(AXUIElementRef element, NSString *role, NSString *identifier) {
+        if (![role isEqualToString:@"AXButton"]) return NO;
+
+        NSString *value = [self valueOfElement:element];
+        return value && [value containsString:@" of "];
+    } maxDepth:3];
+
+    NSString *targetDesc = [self filterButtonIdentifierForFilter:filter];
+    BOOL result = NO;
+
+    [WALogger debug:@"selectChatFilter: found %lu filter buttons, looking for '%@'", (unsigned long)filterButtons.count, targetDesc];
+
+    for (id child in filterButtons) {
+        AXUIElementRef element = (__bridge AXUIElementRef)child;
+
+        NSString *desc = [self descriptionOfElement:element];
+        if (!desc) continue;
+
+        [WALogger debug:@"selectChatFilter: checking button desc='%@'", desc];
+
+        // Match description (case-insensitive)
+        if ([[desc lowercaseString] containsString:[targetDesc lowercaseString]]) {
+            [WALogger debug:@"selectChatFilter: pressing button '%@'", desc];
+            result = [self pressElement:element];
+            if (result) {
+                [NSThread sleepForTimeInterval:0.3]; // Wait for UI to update
+            }
+            break;
+        }
+    }
+
+    CFRelease(filterCell);
+    CFRelease(window);
+
+    if (!result) {
+        [WALogger warn:@"selectChatFilter: could not find filter button for '%@'", targetDesc];
+    }
+
+    return result;
+}
+
 #pragma mark - Chat List
+
+- (NSArray<WAChat *> *)getRecentChatsWithFilter:(WAChatFilter)filter {
+    // Switch to the requested filter first
+    WAChatFilter currentFilter = [self getSelectedChatFilter];
+    if (currentFilter != filter) {
+        [WALogger debug:@"getRecentChatsWithFilter: switching from %@ to %@",
+         [WAAccessibility stringFromChatFilter:currentFilter],
+         [WAAccessibility stringFromChatFilter:filter]];
+        [self selectChatFilter:filter];
+    }
+
+    return [self getRecentChats];
+}
 
 - (NSArray<WAChat *> *)getRecentChats {
     AXUIElementRef window = [self getMainWindow];

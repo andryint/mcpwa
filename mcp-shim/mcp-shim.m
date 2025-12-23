@@ -28,10 +28,16 @@ NSArray* getMcpwaTools(void) {
         },
         @{
             @"name": @"whatsapp_list_chats",
-            @"description": @"Get list of all visible WhatsApp chats with last message preview. Returns chat names, last messages, timestamps, and whether chats are pinned or group chats.",
+            @"description": @"Get list of recent visible WhatsApp chats with last message preview. Returns chat names, last messages, timestamps, and whether chats are pinned or group chats. Optionally filter by: 'all' (default), 'unread', 'favorites', or 'groups'.",
             @"inputSchema": @{
                 @"type": @"object",
-                @"properties": @{},
+                @"properties": @{
+                    @"filter": @{
+                        @"type": @"string",
+                        @"description": @"Optional filter: 'all' (default), 'unread', 'favorites', or 'groups'",
+                        @"enum": @[@"all", @"unread", @"favorites", @"groups"]
+                    }
+                },
                 @"required": @[]
             }
         },
@@ -121,6 +127,30 @@ NSArray* getMcpwaTools(void) {
                 @"type": @"object",
                 @"properties": @{},
                 @"required": @[]
+            }
+        },
+        @{
+            @"name": @"whatsapp_get_chat_filter",
+            @"description": @"Get the currently selected chat list filter (All, Unread, Favorites, or Groups).",
+            @"inputSchema": @{
+                @"type": @"object",
+                @"properties": @{},
+                @"required": @[]
+            }
+        },
+        @{
+            @"name": @"whatsapp_set_chat_filter",
+            @"description": @"Set the chat list filter to show only certain chats. Options: 'all', 'unread' (only unread chats), 'favorites' (only favorite/starred chats), 'groups' (only group chats).",
+            @"inputSchema": @{
+                @"type": @"object",
+                @"properties": @{
+                    @"filter": @{
+                        @"type": @"string",
+                        @"description": @"Filter to apply: 'all', 'unread', 'favorites', or 'groups'",
+                        @"enum": @[@"all", @"unread", @"favorites", @"groups"]
+                    }
+                },
+                @"required": @[@"filter"]
             }
         }
     ];
@@ -235,7 +265,7 @@ void handleLocalRequest(NSDictionary *request) {
             @"result": @{@"tools": getMcpwaTools()}
         };
         sendJsonResponse(response);
-        os_log_info(logger, "Returned mcpwa tools list (9 tools, server not connected)");
+        os_log_info(logger, "Returned mcpwa tools list (11 tools, server not connected)");
     }
     else if ([method isEqualToString:@"tools/call"]) {
         // Server not connected - return error

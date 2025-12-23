@@ -256,6 +256,91 @@
     NSLog(@"========================================");
 }
 
++ (void)testGlobalSearchWithFilter:(NSString *)query filter:(NSString *)filterName {
+    [WALogger info:@""];
+    [WALogger info:@"========================================"];
+    [WALogger info:@"[TEST] Global Search with Filter"];
+    [WALogger info:@"========================================"];
+    [WALogger info:@"  Query: \"%@\"", query];
+    [WALogger info:@"  Filter: %@", filterName];
+
+    WAAccessibility *wa = [WAAccessibility shared];
+
+    if (![wa isWhatsAppAvailable]) {
+        [WALogger error:@"  ✗ WhatsApp not available"];
+        return;
+    }
+
+    // First set the filter
+    WAChatFilter filter = [WAAccessibility chatFilterFromString:filterName];
+    [WALogger info:@"  Setting filter to: %@", [WAAccessibility stringFromChatFilter:filter]];
+
+    BOOL filterSet = [wa selectChatFilter:filter];
+    if (!filterSet) {
+        [WALogger warn:@"  ⚠️ Could not set filter, continuing with search anyway"];
+    } else {
+        [WALogger info:@"  ✓ Filter set"];
+    }
+
+    [WALogger info:@"  Executing search..."];
+    NSDate *startTime = [NSDate date];
+
+    WASearchResults *results = [wa globalSearch:query];
+
+    NSTimeInterval elapsed = [[NSDate date] timeIntervalSinceDate:startTime];
+    [WALogger info:@"  Completed in %.2f seconds", elapsed];
+
+    if (!results) {
+        [WALogger error:@"  ✗ Search returned nil"];
+        return;
+    }
+
+    [WALogger info:@""];
+    [WALogger info:@"  === RESULTS (Filter: %@) ===", [WAAccessibility stringFromChatFilter:filter]];
+    [WALogger info:@"  Chat matches: %lu", (unsigned long)results.chatMatches.count];
+    [WALogger info:@"  Message matches: %lu", (unsigned long)results.messageMatches.count];
+
+    // Show chat matches
+    if (results.chatMatches.count > 0) {
+        [WALogger info:@""];
+        [WALogger info:@"  --- Chat Matches ---"];
+        for (WASearchChatResult *chat in results.chatMatches) {
+            [WALogger info:@"  🔍 %@", chat.chatName];
+            if (chat.lastMessagePreview) {
+                NSString *preview = chat.lastMessagePreview.length > 50 ?
+                    [[chat.lastMessagePreview substringToIndex:50] stringByAppendingString:@"..."] :
+                    chat.lastMessagePreview;
+                [WALogger info:@"     Last: %@", preview];
+            }
+        }
+    }
+
+    // Show message matches
+    if (results.messageMatches.count > 0) {
+        [WALogger info:@""];
+        [WALogger info:@"  --- Message Matches ---"];
+        for (WASearchMessageResult *msg in results.messageMatches) {
+            [WALogger info:@"  💬 [%@] %@", msg.chatName, msg.sender ?: @"You"];
+            NSString *preview = msg.messagePreview.length > 60 ?
+                [[msg.messagePreview substringToIndex:60] stringByAppendingString:@"..."] :
+                msg.messagePreview;
+            [WALogger info:@"     \"%@\"", preview];
+        }
+    }
+
+    if (results.chatMatches.count == 0 && results.messageMatches.count == 0) {
+        [WALogger info:@""];
+        [WALogger warn:@"  ⚠️  No results found"];
+        [WALogger info:@"     This could mean:"];
+        [WALogger info:@"     - No matches exist for \"%@\" with filter '%@'", query, [WAAccessibility stringFromChatFilter:filter]];
+        [WALogger info:@"     - Search text wasn't entered (check AXTextArea detection)"];
+        [WALogger info:@"     - Results weren't scraped (timing issue?)"];
+    }
+
+    [WALogger info:@""];
+    [WALogger info:@"========================================"];
+}
+
 + (void)testClearSearch {
     NSLog(@"");
     NSLog(@"[TEST] Clear Search");
@@ -904,6 +989,129 @@
         @"Tania Melamed ( Chess, Шахматы ), Я не с ним - он в Grasse с мамой"];
 
     NSLog(@"\n=== END PARSING TESTS ===\n");
+}
+
+#pragma mark - Chat Filter Tests
+
++ (void)testGetChatFilter {
+    [WALogger info:@""];
+    [WALogger info:@"========================================"];
+    [WALogger info:@"[TEST] Get Chat Filter"];
+    [WALogger info:@"========================================"];
+
+    WAAccessibility *wa = [WAAccessibility shared];
+
+    if (![wa isWhatsAppAvailable]) {
+        [WALogger error:@"  ✗ WhatsApp not available"];
+        return;
+    }
+
+    WAChatFilter filter = [wa getSelectedChatFilter];
+    NSString *filterName = [WAAccessibility stringFromChatFilter:filter];
+
+    [WALogger info:@"  Current filter: %@", filterName];
+
+    switch (filter) {
+        case WAChatFilterAll:
+            [WALogger info:@"  Description: Showing all chats"];
+            break;
+        case WAChatFilterUnread:
+            [WALogger info:@"  Description: Showing only unread chats"];
+            break;
+        case WAChatFilterFavorites:
+            [WALogger info:@"  Description: Showing only favorite/starred chats"];
+            break;
+        case WAChatFilterGroups:
+            [WALogger info:@"  Description: Showing only group chats"];
+            break;
+    }
+
+    [WALogger info:@""];
+    [WALogger info:@"========================================"];
+}
+
++ (void)testSetChatFilter:(NSString *)filterName {
+    [WALogger info:@""];
+    [WALogger info:@"========================================"];
+    [WALogger info:@"[TEST] Set Chat Filter"];
+    [WALogger info:@"========================================"];
+    [WALogger info:@"  Target filter: %@", filterName];
+
+    WAAccessibility *wa = [WAAccessibility shared];
+
+    if (![wa isWhatsAppAvailable]) {
+        [WALogger error:@"  ✗ WhatsApp not available"];
+        return;
+    }
+
+    WAChatFilter filter = [WAAccessibility chatFilterFromString:filterName];
+    [WALogger info:@"  Parsed as: %@", [WAAccessibility stringFromChatFilter:filter]];
+
+    WAChatFilter currentFilter = [wa getSelectedChatFilter];
+    [WALogger info:@"  Current filter: %@", [WAAccessibility stringFromChatFilter:currentFilter]];
+
+    if (currentFilter == filter) {
+        [WALogger info:@"  ℹ️  Already on this filter, will still click it"];
+    }
+
+    [WALogger info:@"  Clicking filter button..."];
+    BOOL success = [wa selectChatFilter:filter];
+
+    if (success) {
+        [WALogger info:@"  ✓ Filter changed successfully"];
+
+        // Verify
+        [NSThread sleepForTimeInterval:0.3];
+        WAChatFilter newFilter = [wa getSelectedChatFilter];
+        [WALogger info:@"  Verification: now on '%@'", [WAAccessibility stringFromChatFilter:newFilter]];
+    } else {
+        [WALogger error:@"  ✗ Failed to change filter"];
+    }
+
+    [WALogger info:@""];
+    [WALogger info:@"========================================"];
+}
+
++ (void)testListChatsWithFilter:(NSString *)filterName {
+    [WALogger info:@""];
+    [WALogger info:@"========================================"];
+    [WALogger info:@"[TEST] List Chats With Filter"];
+    [WALogger info:@"========================================"];
+    [WALogger info:@"  Filter: %@", filterName];
+
+    WAAccessibility *wa = [WAAccessibility shared];
+
+    if (![wa isWhatsAppAvailable]) {
+        [WALogger error:@"  ✗ WhatsApp not available"];
+        return;
+    }
+
+    WAChatFilter filter = [WAAccessibility chatFilterFromString:filterName];
+    [WALogger info:@"  Parsed as: %@", [WAAccessibility stringFromChatFilter:filter]];
+
+    [WALogger info:@"  Fetching chats..."];
+    NSArray<WAChat *> *chats = [wa getRecentChatsWithFilter:filter];
+
+    [WALogger info:@""];
+    [WALogger info:@"  Found %lu chats with filter '%@':", (unsigned long)chats.count, [WAAccessibility stringFromChatFilter:filter]];
+
+    for (NSInteger i = 0; i < chats.count; i++) {
+        WAChat *chat = chats[i];
+        [WALogger info:@"  [%ld] %@ %@%@",
+              (long)i,
+              chat.name,
+              chat.isPinned ? @"📌" : @"",
+              chat.isGroup ? @"👥" : @""];
+        if (chat.lastMessage.length > 0) {
+            NSString *preview = chat.lastMessage.length > 50 ?
+                [[chat.lastMessage substringToIndex:50] stringByAppendingString:@"..."] :
+                chat.lastMessage;
+            [WALogger info:@"      Last: %@", preview];
+        }
+    }
+
+    [WALogger info:@""];
+    [WALogger info:@"========================================"];
 }
 
 @end

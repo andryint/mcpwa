@@ -236,6 +236,52 @@
                                                 <action selector="debugTypeInABC:" target="Voe-Tx-rLC" id="zdp-1C-2fq"/>
                                             </connections>
                                         </menuItem>
+                                        <menuItem isSeparatorItem="YES" id="flt-sep-001"/>
+                                        <menuItem title="Chat Filters" id="flt-mnu-001" userLabel="Chat Filters">
+                                            <modifierMask key="keyEquivalentModifierMask"/>
+                                            <menu key="submenu" title="Chat Filters" id="flt-sub-001">
+                                                <items>
+                                                    <menuItem title="Get Current Filter" id="flt-get-001" userLabel="Get Current Filter">
+                                                        <modifierMask key="keyEquivalentModifierMask"/>
+                                                        <connections>
+                                                            <action selector="debugGetChatFilter:" target="Voe-Tx-rLC" id="flt-get-act"/>
+                                                        </connections>
+                                                    </menuItem>
+                                                    <menuItem isSeparatorItem="YES" id="flt-sep-002"/>
+                                                    <menuItem title="Set Filter: All" id="flt-all-001" userLabel="Set Filter All">
+                                                        <modifierMask key="keyEquivalentModifierMask"/>
+                                                        <connections>
+                                                            <action selector="debugSetFilterAll:" target="Voe-Tx-rLC" id="flt-all-act"/>
+                                                        </connections>
+                                                    </menuItem>
+                                                    <menuItem title="Set Filter: Unread" id="flt-unr-001" userLabel="Set Filter Unread">
+                                                        <modifierMask key="keyEquivalentModifierMask"/>
+                                                        <connections>
+                                                            <action selector="debugSetFilterUnread:" target="Voe-Tx-rLC" id="flt-unr-act"/>
+                                                        </connections>
+                                                    </menuItem>
+                                                    <menuItem title="Set Filter: Favorites" id="flt-fav-001" userLabel="Set Filter Favorites">
+                                                        <modifierMask key="keyEquivalentModifierMask"/>
+                                                        <connections>
+                                                            <action selector="debugSetFilterFavorites:" target="Voe-Tx-rLC" id="flt-fav-act"/>
+                                                        </connections>
+                                                    </menuItem>
+                                                    <menuItem title="Set Filter: Groups" id="flt-grp-001" userLabel="Set Filter Groups">
+                                                        <modifierMask key="keyEquivalentModifierMask"/>
+                                                        <connections>
+                                                            <action selector="debugSetFilterGroups:" target="Voe-Tx-rLC" id="flt-grp-act"/>
+                                                        </connections>
+                                                    </menuItem>
+                                                    <menuItem isSeparatorItem="YES" id="flt-sep-003"/>
+                                                    <menuItem title="List Chats With Filter..." id="flt-lst-001" userLabel="List Chats With Filter">
+                                                        <modifierMask key="keyEquivalentModifierMask"/>
+                                                        <connections>
+                                                            <action selector="debugListChatsWithFilter:" target="Voe-Tx-rLC" id="flt-lst-act"/>
+                                                        </connections>
+                                                    </menuItem>
+                                                </items>
+                                            </menu>
+                                        </menuItem>
                                     </items>
                                 </menu>
                             </menuItem>
