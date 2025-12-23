@@ -95,16 +95,7 @@
     self.statusLabel.stringValue = @"● Checking status...";
     self.statusLabel.autoresizingMask = NSViewWidthSizable;
     [toolbar addSubview:self.statusLabel];
-    
-    // Check Status button (pinned to right)
-    NSButton *permButton = [[NSButton alloc] initWithFrame:NSMakeRect(660, 10, 120, 30)];
-    permButton.bezelStyle = NSBezelStyleRounded;
-    permButton.title = @"Check Status";
-    permButton.target = self;
-    permButton.action = @selector(checkPermissions:);
-    permButton.autoresizingMask = NSViewMinXMargin;
-    [toolbar addSubview:permButton];
-    
+
     // === Log area ===
     NSScrollView *scrollView = [[NSScrollView alloc] initWithFrame:NSMakeRect(10, 60, 780, 380)];
     scrollView.hasVerticalScroller = YES;

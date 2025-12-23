@@ -8,6 +8,7 @@
 #import "WAAccessibility.h"
 #import "WALogger.h"
 #import <ApplicationServices/ApplicationServices.h>
+#import <signal.h>
 
 #pragma mark - Data Model Implementations
 
@@ -279,20 +280,57 @@
 #pragma mark - WhatsApp Connection
 
 - (BOOL)connectToWhatsApp {
-    NSArray *apps = [[NSWorkspace sharedWorkspace] runningApplications];
-    
-    for (NSRunningApplication *app in apps) {
-        if ([app.bundleIdentifier isEqualToString:@"net.whatsapp.WhatsApp"]) {
-            self.whatsappPID = app.processIdentifier;
-            
+    // If we have a cached PID, verify the process is still actually running
+    if (self.whatsappPID > 0) {
+        // kill(pid, 0) checks if process exists without sending a signal
+        int killResult = kill(self.whatsappPID, 0);
+        // [WALogger debug:@"connectToWhatsApp: cached PID %d, kill(0) = %d, errno = %d", self.whatsappPID, killResult, errno];
+        if (killResult != 0) {
+            // Process no longer exists - clear cached state
+            // [WALogger debug:@"connectToWhatsApp: cached PID %d no longer exists, clearing", self.whatsappPID];
             if (self.appElement) {
                 CFRelease(self.appElement);
+                self.appElement = NULL;
             }
-            self.appElement = AXUIElementCreateApplication(self.whatsappPID);
-            return self.appElement != NULL;
+            self.whatsappPID = 0;
         }
     }
-    
+
+    // Look for WhatsApp in running applications
+    NSArray *apps = [NSRunningApplication runningApplicationsWithBundleIdentifier:@"net.whatsapp.WhatsApp"];
+    // [WALogger debug:@"connectToWhatsApp: found %lu apps with bundle id", (unsigned long)apps.count];
+
+    for (NSRunningApplication *app in apps) {
+        // [WALogger debug:@"connectToWhatsApp: app PID=%d terminated=%d", app.processIdentifier, app.terminated];
+
+        // Skip terminated processes
+        if (app.terminated) continue;
+
+        pid_t pid = app.processIdentifier;
+
+        // Double-check with kill(0) that process actually exists
+        int killResult = kill(pid, 0);
+        // [WALogger debug:@"connectToWhatsApp: kill(%d, 0) = %d, errno = %d", pid, killResult, errno];
+        if (killResult != 0) continue;
+
+        self.whatsappPID = pid;
+
+        if (self.appElement) {
+            CFRelease(self.appElement);
+        }
+        self.appElement = AXUIElementCreateApplication(self.whatsappPID);
+        // [WALogger debug:@"connectToWhatsApp: connected to PID %d", pid];
+        return self.appElement != NULL;
+    }
+
+    // WhatsApp not running - clear any stale cached element
+    // [WALogger debug:@"connectToWhatsApp: no valid WhatsApp found"];
+    if (self.appElement) {
+        CFRelease(self.appElement);
+        self.appElement = NULL;
+    }
+    self.whatsappPID = 0;
+
     return NO;
 }
 
@@ -300,10 +338,23 @@
     if (![self connectToWhatsApp]) {
         return NO;
     }
-    
+
     // Verify we can actually query it
     NSString *role = [self roleOfElement:self.appElement];
-    return [role isEqualToString:@"AXApplication"];
+    if (![role isEqualToString:@"AXApplication"]) {
+        return NO;
+    }
+
+    // Check if WhatsApp has at least one window - a quitting app may still
+    // have a running process but no windows, making it unusable
+    AXUIElementRef window = [self getMainWindow];
+    if (!window) {
+        [WALogger debug:@"isWhatsAppAvailable: process exists but no windows - app is quitting"];
+        return NO;
+    }
+    CFRelease(window);
+
+    return YES;
 }
 
 - (BOOL)activateWhatsApp {

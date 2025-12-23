@@ -120,6 +120,13 @@
                                 <modifierMask key="keyEquivalentModifierMask"/>
                                 <menu key="submenu" title="Debug" id="rZW-gQ-ylh">
                                     <items>
+                                        <menuItem title="Check Status" id="chk-st-001" userLabel="Check Status">
+                                            <modifierMask key="keyEquivalentModifierMask"/>
+                                            <connections>
+                                                <action selector="checkPermissions:" target="Voe-Tx-rLC" id="chk-st-act"/>
+                                            </connections>
+                                        </menuItem>
+                                        <menuItem isSeparatorItem="YES" id="chk-st-sep"/>
                                         <menuItem title="Explore" id="L2Q-oU-zuO">
                                             <modifierMask key="keyEquivalentModifierMask"/>
                                             <connections>
