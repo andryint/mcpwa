@@ -362,6 +362,31 @@
     return [formatter stringFromDate:[NSDate date]];
 }
 
+#pragma mark - UI Helpers
+
+- (NSString *)showInputDialogWithTitle:(NSString *)title
+                               message:(NSString *)message
+                           placeholder:(NSString *)placeholder
+                          defaultValue:(NSString *)defaultValue {
+    NSAlert *alert = [[NSAlert alloc] init];
+    alert.messageText = title;
+    alert.informativeText = message;
+    alert.alertStyle = NSAlertStyleInformational;
+    [alert addButtonWithTitle:@"OK"];
+    [alert addButtonWithTitle:@"Cancel"];
+
+    NSTextField *input = [[NSTextField alloc] initWithFrame:NSMakeRect(0, 0, 200, 24)];
+    input.stringValue = defaultValue ?: @"";
+    input.placeholderString = placeholder;
+    alert.accessoryView = input;
+    [alert.window setInitialFirstResponder:input];
+
+    if ([alert runModal] == NSAlertFirstButtonReturn && input.stringValue.length > 0) {
+        return input.stringValue;
+    }
+    return nil;
+}
+
 #pragma mark - WALogger Integration
 
 - (void)handleLogNotification:(NSNotification *)notification {
@@ -396,182 +421,67 @@
 }
 
 
-- (IBAction)testGlobalSearch:(id)sender
-{
-    [self runGlobalSearchTest:@"SCB"];
-}
-
-- (IBAction)testGlobalSearchCustom:(id)sender {
-    // Show input dialog
-    NSAlert *alert = [[NSAlert alloc] init];
-    alert.messageText = @"Global Search Test";
-    alert.informativeText = @"Enter search query:";
-    alert.alertStyle = NSAlertStyleInformational;
-    [alert addButtonWithTitle:@"Search"];
-    [alert addButtonWithTitle:@"Cancel"];
-    
-    NSTextField *input = [[NSTextField alloc] initWithFrame:NSMakeRect(0, 0, 200, 24)];
-    input.stringValue = @"";
-    input.placeholderString = @"Enter search term...";
-    alert.accessoryView = input;
-    
-    // Make input first responder
-    [alert.window setInitialFirstResponder:input];
-    
-    if ([alert runModal] == NSAlertFirstButtonReturn) {
-        NSString *query = input.stringValue;
-        if (query.length > 0) {
-            [self runGlobalSearchTest:query];
-        }
-    }
-}
-
-- (void)runGlobalSearchTest:(NSString *)query {
-    [self appendLog:[NSString stringWithFormat:@"🔍 Testing globalSearch: \"%@\"", query] color:NSColor.cyanColor];
-    
+- (IBAction)testGlobalSearch:(id)sender {
     dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
-        WAAccessibility *wa = [WAAccessibility shared];
-        
-        if (![wa isWhatsAppAvailable]) {
-            dispatch_async(dispatch_get_main_queue(), ^{
-                [self appendLog:@"  ✗ WhatsApp not available" color:NSColor.redColor];
-            });
-            return;
-        }
-        
-        NSDate *startTime = [NSDate date];
-        WASearchResults *results = [wa globalSearch:query];
-        NSTimeInterval elapsed = [[NSDate date] timeIntervalSinceDate:startTime];
-        
-        dispatch_async(dispatch_get_main_queue(), ^{
-            [self appendLog:[NSString stringWithFormat:@"  Completed in %.2f seconds", elapsed]];
-            
-            if (!results) {
-                [self appendLog:@"  ✗ Search returned nil" color:NSColor.redColor];
-                return;
-            }
-            
-            [self appendLog:[NSString stringWithFormat:@"  Chat matches: %lu", (unsigned long)results.chatMatches.count]
-                      color:NSColor.greenColor];
-            [self appendLog:[NSString stringWithFormat:@"  Message matches: %lu", (unsigned long)results.messageMatches.count]
-                      color:NSColor.greenColor];
-            
-            // Show chat matches
-            if (results.chatMatches.count > 0) {
-                [self appendLog:@"  --- Chats ---" color:NSColor.systemGrayColor];
-                for (WASearchChatResult *chat in results.chatMatches) {
-                    [self appendLog:[NSString stringWithFormat:@"    📁 %@", chat.chatName]];
-                }
-            }
-            
-            // Show message matches
-            if (results.messageMatches.count > 0) {
-                [self appendLog:@"  --- Messages ---" color:NSColor.systemGrayColor];
-                for (WASearchMessageResult *msg in results.messageMatches) {
-                    NSString *preview = msg.messagePreview.length > 50 ?
-                    [[msg.messagePreview substringToIndex:50] stringByAppendingString:@"..."] :
-                    msg.messagePreview;
-                    [self appendLog:[NSString stringWithFormat:@"    💬 [%@] %@: %@",
-                                     msg.chatName, msg.sender ?: @"You", preview]];
-                }
-            }
-            
-            if (results.chatMatches.count == 0 && results.messageMatches.count == 0) {
-                [self appendLog:@"  ⚠️ No results found" color:NSColor.yellowColor];
-                [self appendLog:@"     Check: Is search text actually entered in WhatsApp?" color:NSColor.systemGrayColor];
-            }
-            
-            [self appendLog:@""];
-        });
+        [WAAccessibilityTest testGlobalSearch:@"SCB"];
     });
 }
 
--(IBAction)testOpenChat:(id)sender
-{
-    // Show input dialog
-    NSAlert *alert = [[NSAlert alloc] init];
-    alert.messageText = @"Global Search Test";
-    alert.informativeText = @"Enter search query:";
-    alert.alertStyle = NSAlertStyleInformational;
-    [alert addButtonWithTitle:@"Search"];
-    [alert addButtonWithTitle:@"Cancel"];
-    
-    NSTextField *input = [[NSTextField alloc] initWithFrame:NSMakeRect(0, 0, 200, 24)];
-    input.stringValue = @"";
-    input.placeholderString = @"Enter search term...";
-    alert.accessoryView = input;
-    
-    // Make input first responder
-    [alert.window setInitialFirstResponder:input];
-    
-    if ([alert runModal] == NSAlertFirstButtonReturn) {
-        NSString *query = input.stringValue;
-        if (query.length > 0) {
-            [WAAccessibilityTest testOpenChat:query];
-        }
+- (IBAction)testGlobalSearchCustom:(id)sender {
+    NSString *query = [self showInputDialogWithTitle:@"Global Search Test"
+                                             message:@"Enter search query:"
+                                         placeholder:@"Enter search term..."
+                                        defaultValue:@""];
+    if (query) {
+        dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
+            [WAAccessibilityTest testGlobalSearch:query];
+        });
+    }
+}
+
+- (IBAction)testOpenChat:(id)sender {
+    NSString *name = [self showInputDialogWithTitle:@"Open Chat"
+                                            message:@"Enter chat name:"
+                                        placeholder:@"Enter chat name..."
+                                       defaultValue:@""];
+    if (name) {
+        dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
+            [WAAccessibilityTest testOpenChat:name];
+        });
     }
 }
 
 - (IBAction)testClearSearch:(id)sender {
-    [self appendLog:@"🧹 Clearing search..." color:NSColor.cyanColor];
-    
     dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
-        WAAccessibility *wa = [WAAccessibility shared];
-        BOOL success = [wa clearSearch];
-        
-        dispatch_async(dispatch_get_main_queue(), ^{
-            [self appendLog:[NSString stringWithFormat:@"  Result: %@", success ? @"✓ Cleared" : @"✗ Failed"]
-                      color:success ? NSColor.greenColor : NSColor.redColor];
-            [self appendLog:@""];
-        });
+        [WAAccessibilityTest testClearSearch];
     });
 }
 
 - (IBAction)testClipboardPaste:(id)sender {
-    [self appendLog:@"📋 Testing Clipboard Paste..." color:NSColor.cyanColor];
-    
     dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
         [WAAccessibilityTest testClipboardPaste:@"SCB"];
-        
-        dispatch_async(dispatch_get_main_queue(), ^{
-            [self appendLog:@"  Done - check WhatsApp and Console.app for results" color:NSColor.greenColor];
-            [self appendLog:@""];
-        });
     });
 }
 
 - (IBAction)testCharacterTyping:(id)sender {
-    [self appendLog:@"⌨️ Testing Character Typing..." color:NSColor.cyanColor];
-    
     dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
         [WAAccessibilityTest testCharacterTyping:@"SCB"];
-        
-        dispatch_async(dispatch_get_main_queue(), ^{
-            [self appendLog:@"  Done - check WhatsApp and Console.app for results" color:NSColor.greenColor];
-            [self appendLog:@""];
-        });
     });
 }
 
 - (IBAction)explore:(id)sender {
-    [self appendLog:@"Running AX Explorer..." color:NSColor.cyanColor];
     dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
         NSString *path = [@"~/Desktop/whatsapp_ax.txt" stringByExpandingTildeInPath];
         [WAAccessibilityExplorer exploreToFile:path];
         dispatch_async(dispatch_get_main_queue(), ^{
-            [self appendLog:[NSString stringWithFormat:@"Explorer complete - saved to %@", path] color:NSColor.greenColor];
-            [[NSWorkspace sharedWorkspace] openFile:path];
+            [[NSWorkspace sharedWorkspace] openURL:[NSURL fileURLWithPath:path]];
         });
     });
 }
 
 - (IBAction)runTests:(id)sender {
-    [self appendLog:@"Running WAAccessibility tests..." color:NSColor.cyanColor];
     dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
         [WAAccessibilityTest runAllTests];
-        dispatch_async(dispatch_get_main_queue(), ^{
-            [self appendLog:@"Tests complete - see Console for output" color:NSColor.greenColor];
-        });
     });
 }
 
@@ -582,19 +492,11 @@
 }
 
 - (IBAction)debugSearchAndParse:(id)sender {
-    // Show input dialog for query
-    NSAlert *alert = [[NSAlert alloc] init];
-    alert.messageText = @"Search Query";
-    alert.informativeText = @"Enter search term:";
-    [alert addButtonWithTitle:@"Search"];
-    [alert addButtonWithTitle:@"Cancel"];
-    
-    NSTextField *input = [[NSTextField alloc] initWithFrame:NSMakeRect(0, 0, 200, 24)];
-    input.stringValue = @"ChatGPT";  // Default query
-    alert.accessoryView = input;
-    
-    if ([alert runModal] == NSAlertFirstButtonReturn) {
-        NSString *query = input.stringValue;
+    NSString *query = [self showInputDialogWithTitle:@"Search Query"
+                                             message:@"Enter search term:"
+                                         placeholder:@"Enter search term..."
+                                        defaultValue:@"ChatGPT"];
+    if (query) {
         dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
             [WAAccessibilityTest testSearchAndParseResults:query];
         });
@@ -620,31 +522,8 @@
 }
 
 - (IBAction)debugTestParsing:(id)sender {
-    // Test various description formats
     dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
-        NSLog(@"\n\n=== PARSING UNIT TESTS ===\n");
-        
-        // Test case 1: Simple incoming
-        [WAAccessibilityTest testParseSearchResultDescription:
-            @"Igor Berezovsky, это необязательно. как раз второе предложение"];
-        
-        // Test case 2: Outgoing with You:
-        [WAAccessibilityTest testParseSearchResultDescription:
-            @"Igor Berezovsky, ⁨You⁩: …multiple AI services (ChatGPT, Claude, Gemini"];
-        
-        // Test case 3: With date
-        [WAAccessibilityTest testParseSearchResultDescription:
-            @"Igor Berezovsky, Here Evren used ChatGPT to some extent as well:, 29/11/2025"];
-        
-        // Test case 4: Group chat
-        [WAAccessibilityTest testParseSearchResultDescription:
-            @"Chess club Monaco 🇲🇨 ♟, Bonjour! pour Grasse, 13 et 14 decembre"];
-        
-        // Test case 5: Cyrillic
-        [WAAccessibilityTest testParseSearchResultDescription:
-            @"Tania Melamed ( Chess, Шахматы ), Я не с ним - он в Grasse с мамой"];
-        
-        NSLog(@"\n=== END PARSING TESTS ===\n");
+        [WAAccessibilityTest testParsingUnitTests];
     });
 }
 
@@ -678,11 +557,10 @@
     });
 }
 
-- (IBAction)debugReadChatList:(id)sender
-{
+- (IBAction)debugReadChatList:(id)sender {
     dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
-        [[WAAccessibility shared] getRecentChats];
-    }) ;
+        [WAAccessibilityTest testReadChatList];
+    });
 }
 
 - (IBAction)debugGetCurrentChat:(id)sender

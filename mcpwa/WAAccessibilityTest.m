@@ -834,21 +834,76 @@
     CFRelease(window);
 }
 
-+(void) testGetCurrentChat
-{
++ (void)testGetCurrentChat {
     WAAccessibility *wa = [WAAccessibility shared];
-    
+
     WACurrentChat *current = [wa getCurrentChat];
-    
+
     if (!current) {
         [WALogger error:@"   No chat open"];
         return;
     }
-    
+
     for (WAMessage *msg in current.messages) {
         [WALogger error:@"\t %@", msg.text];
     }
 }
 
++ (void)testReadChatList {
+    NSLog(@"");
+    NSLog(@"========================================");
+    NSLog(@"[TEST] Read Chat List");
+    NSLog(@"========================================");
+
+    WAAccessibility *wa = [WAAccessibility shared];
+
+    if (![wa isWhatsAppAvailable]) {
+        NSLog(@"  ✗ WhatsApp not available");
+        return;
+    }
+
+    NSArray<WAChat *> *chats = [wa getRecentChats];
+    NSLog(@"  Found %lu chats", (unsigned long)chats.count);
+
+    for (NSInteger i = 0; i < chats.count; i++) {
+        WAChat *chat = chats[i];
+        NSLog(@"  [%ld] %@ %@", (long)i, chat.name, chat.isPinned ? @"📌" : @"");
+        if (chat.lastMessage.length > 0) {
+            NSString *preview = chat.lastMessage.length > 50 ?
+                [[chat.lastMessage substringToIndex:50] stringByAppendingString:@"..."] :
+                chat.lastMessage;
+            NSLog(@"      Last: %@", preview);
+        }
+    }
+
+    NSLog(@"");
+    NSLog(@"========================================");
+}
+
++ (void)testParsingUnitTests {
+    NSLog(@"\n\n=== PARSING UNIT TESTS ===\n");
+
+    // Test case 1: Simple incoming
+    [self testParseSearchResultDescription:
+        @"Igor Berezovsky, это необязательно. как раз второе предложение"];
+
+    // Test case 2: Outgoing with You:
+    [self testParseSearchResultDescription:
+        @"Igor Berezovsky, ⁨You⁩: …multiple AI services (ChatGPT, Claude, Gemini"];
+
+    // Test case 3: With date
+    [self testParseSearchResultDescription:
+        @"Igor Berezovsky, Here Evren used ChatGPT to some extent as well:, 29/11/2025"];
+
+    // Test case 4: Group chat
+    [self testParseSearchResultDescription:
+        @"Chess club Monaco 🇲🇨 ♟, Bonjour! pour Grasse, 13 et 14 decembre"];
+
+    // Test case 5: Cyrillic
+    [self testParseSearchResultDescription:
+        @"Tania Melamed ( Chess, Шахматы ), Я не с ним - он в Grasse с мамой"];
+
+    NSLog(@"\n=== END PARSING TESTS ===\n");
+}
 
 @end
