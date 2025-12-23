@@ -76,28 +76,31 @@
                                                   defer:NO];
     self.window.title = @"WhatsApp Connector";
     self.window.minSize = NSMakeSize(600, 400);
-    
-    // Create content view with padding
-    NSView *contentView = self.window.contentView;
-    
-    // === Top toolbar area ===
-    NSView *toolbar = [[NSView alloc] initWithFrame:NSMakeRect(0, 450, 800, 50)];
-    toolbar.autoresizingMask = NSViewWidthSizable | NSViewMinYMargin;
-    [contentView addSubview:toolbar];
-    
-    // Status indicator
-    self.statusLabel = [[NSTextField alloc] initWithFrame:NSMakeRect(20, 10, 400, 30)];
+
+    // Enable title bar accessory view
+    self.window.titleVisibility = NSWindowTitleHidden;
+
+    // Create status label for title bar
+    self.statusLabel = [[NSTextField alloc] initWithFrame:NSMakeRect(0, 0, 350, 22)];
     self.statusLabel.bezeled = NO;
     self.statusLabel.editable = NO;
     self.statusLabel.selectable = NO;
     self.statusLabel.backgroundColor = NSColor.clearColor;
-    self.statusLabel.font = [NSFont systemFontOfSize:14 weight:NSFontWeightMedium];
+    self.statusLabel.font = [NSFont systemFontOfSize:13 weight:NSFontWeightMedium];
     self.statusLabel.stringValue = @"● Checking status...";
-    self.statusLabel.autoresizingMask = NSViewWidthSizable;
-    [toolbar addSubview:self.statusLabel];
+    self.statusLabel.alignment = NSTextAlignmentCenter;
+
+    // Create accessory view controller for title bar
+    NSTitlebarAccessoryViewController *accessoryVC = [[NSTitlebarAccessoryViewController alloc] init];
+    accessoryVC.view = self.statusLabel;
+    accessoryVC.layoutAttribute = NSLayoutAttributeRight;
+    [self.window addTitlebarAccessoryViewController:accessoryVC];
+
+    // Create content view with padding
+    NSView *contentView = self.window.contentView;
 
     // === Log area ===
-    NSScrollView *scrollView = [[NSScrollView alloc] initWithFrame:NSMakeRect(10, 60, 780, 380)];
+    NSScrollView *scrollView = [[NSScrollView alloc] initWithFrame:NSMakeRect(10, 60, 780, 440)];
     scrollView.hasVerticalScroller = YES;
     scrollView.hasHorizontalScroller = NO;
     scrollView.autohidesScrollers = YES;
