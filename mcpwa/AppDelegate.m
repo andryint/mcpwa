@@ -80,8 +80,11 @@
     // Enable title bar accessory view
     self.window.titleVisibility = NSWindowTitleHidden;
 
+    // Create container view to center the label vertically
+    NSView *statusContainer = [[NSView alloc] initWithFrame:NSMakeRect(0, 0, 350, 28)];
+
     // Create status label for title bar
-    self.statusLabel = [[NSTextField alloc] initWithFrame:NSMakeRect(0, 0, 350, 22)];
+    self.statusLabel = [[NSTextField alloc] initWithFrame:NSMakeRect(0, 4, 350, 18)];
     self.statusLabel.bezeled = NO;
     self.statusLabel.editable = NO;
     self.statusLabel.selectable = NO;
@@ -89,10 +92,11 @@
     self.statusLabel.font = [NSFont systemFontOfSize:13 weight:NSFontWeightMedium];
     self.statusLabel.stringValue = @"● Checking status...";
     self.statusLabel.alignment = NSTextAlignmentCenter;
+    [statusContainer addSubview:self.statusLabel];
 
     // Create accessory view controller for title bar
     NSTitlebarAccessoryViewController *accessoryVC = [[NSTitlebarAccessoryViewController alloc] init];
-    accessoryVC.view = self.statusLabel;
+    accessoryVC.view = statusContainer;
     accessoryVC.layoutAttribute = NSLayoutAttributeRight;
     [self.window addTitlebarAccessoryViewController:accessoryVC];
 
@@ -180,30 +184,39 @@
 - (void)updateStatusLabel {
     BOOL hasPermission = AXIsProcessTrusted();
     BOOL isAvailable = [[WAAccessibility shared] isWhatsAppAvailable];
-    
-    NSString *status;
-    NSColor *color;
-    
+
+    NSString *icon;
+    NSString *text;
+
     if (!hasPermission) {
-        status = @"🔴 Accessibility permission required";
-        color = NSColor.redColor;
+        icon = @"🔴";
+        text = @" Accessibility permission required";
     } else if (!isAvailable) {
-        status = @"🟡 WhatsApp not running or not accessible";
-        color = NSColor.orangeColor;
+        icon = @"🟡";
+        text = @" WhatsApp not running or not accessible";
     } else if (self.serverRunning) {
         if (self.server.isConnected) {
-            status = @"🟢 Server running - Client connected";
+            icon = @"🟢";
+            text = @" Server running - Client connected";
         } else {
-            status = @"🟡 Server running - Waiting for client...";
+            icon = @"🟡";
+            text = @" Server running - Waiting for client...";
         }
-        color = self.server.isConnected ? NSColor.greenColor : NSColor.orangeColor;
     } else {
-        status = @"🟢 Ready";
-        color = NSColor.greenColor;
+        icon = @"🟢";
+        text = @" Ready";
     }
-    
-    self.statusLabel.stringValue = status;
-    self.statusLabel.textColor = color;
+
+    // Create attributed string with colored emoji and dark text
+    NSMutableAttributedString *attrStr = [[NSMutableAttributedString alloc] initWithString:icon];
+    NSDictionary *textAttrs = @{
+        NSForegroundColorAttributeName: NSColor.labelColor,
+        NSFontAttributeName: self.statusLabel.font
+    };
+    NSAttributedString *textPart = [[NSAttributedString alloc] initWithString:text attributes:textAttrs];
+    [attrStr appendAttributedString:textPart];
+
+    self.statusLabel.attributedStringValue = attrStr;
 }
 
 #pragma mark - Actions
