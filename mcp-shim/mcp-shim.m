@@ -10,6 +10,7 @@ static os_log_t logger;
 static NSString *socketPath = @"/tmp/mcpwa.sock";
 static NSFileHandle *stdoutHandle;
 static NSFileHandle *serverHandle;
+static int serverSocket = -1;  // Keep raw socket fd for cleanup
 static BOOL stdinClosed = NO;
 
 #pragma mark - Tool Definitions
@@ -288,6 +289,7 @@ int main(int argc, const char *argv[]) {
                 if (!serverHandle) {
                     int sock = connectToServer();
                     if (sock >= 0) {
+                        serverSocket = sock;  // Store for cleanup
                         NSFileHandle *handle = [[NSFileHandle alloc] initWithFileDescriptor:sock closeOnDealloc:YES];
                         
                         if (!initializeServer(handle)) {
@@ -314,6 +316,7 @@ int main(int argc, const char *argv[]) {
                             }
                             os_log_info(logger, "Server disconnected");
                             serverHandle = nil;
+                            serverSocket = -1;
                         });
                     }
                 }
@@ -352,6 +355,20 @@ int main(int argc, const char *argv[]) {
         
         os_log_info(logger, "stdin closed, exiting");
         stdinClosed = YES;
+
+        // Close the server socket to unblock any threads waiting on availableData
+        // This is critical - without this, the process hangs because background
+        // threads are blocked on socket reads even after main() wants to exit
+        if (serverSocket >= 0) {
+            os_log_info(logger, "Closing server socket to unblock threads");
+            shutdown(serverSocket, SHUT_RDWR);  // Unblock any pending reads
+            close(serverSocket);
+            serverSocket = -1;
+        }
+
+        // Give threads a moment to notice the socket closed
+        usleep(100000);  // 100ms
+
         return 0;
     }
 }
