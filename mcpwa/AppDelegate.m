@@ -420,14 +420,74 @@
     }
 }
 
+#pragma mark - Menu Actions
 
-- (IBAction)testGlobalSearch:(id)sender {
+- (IBAction)uninstallApp:(id)sender {
+    NSAlert *alert = [[NSAlert alloc] init];
+    alert.messageText = @"Uninstall mcpwa?";
+    alert.informativeText = @"This will remove mcpwa from Claude Desktop and quit the app. You can then drag mcpwa to Trash.";
+    [alert addButtonWithTitle:@"Uninstall"];
+    [alert addButtonWithTitle:@"Cancel"];
+
+    if ([alert runModal] == NSAlertFirstButtonReturn) {
+        [self removeFromClaudeConfig];
+
+        NSAlert *done = [[NSAlert alloc] init];
+        done.messageText = @"mcpwa unregistered";
+        done.informativeText = @"You can now drag mcpwa from Applications to Trash.";
+        [done runModal];
+
+        [NSApp terminate:nil];
+    }
+}
+
+- (void)removeFromClaudeConfig {
+    NSString *configPath = [NSHomeDirectory() stringByAppendingPathComponent:
+        @"Library/Application Support/Claude/claude_desktop_config.json"];
+
+    NSData *data = [NSData dataWithContentsOfFile:configPath];
+    if (!data) return;
+
+    NSError *error;
+    NSMutableDictionary *config = [NSJSONSerialization JSONObjectWithData:data
+        options:NSJSONReadingMutableContainers error:&error];
+    if (!config) return;
+
+    NSMutableDictionary *servers = config[@"mcpServers"];
+    if (servers && servers[@"mcpwa"]) {
+        [servers removeObjectForKey:@"mcpwa"];
+
+        NSData *newData = [NSJSONSerialization dataWithJSONObject:config
+            options:NSJSONWritingPrettyPrinted error:&error];
+        [newData writeToFile:configPath atomically:YES];
+    }
+}
+
+#pragma mark - Debug Menu Actions
+
+- (IBAction)debugExplore:(id)sender {
+    dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
+        NSString *path = [@"~/Desktop/whatsapp_ax.txt" stringByExpandingTildeInPath];
+        [WAAccessibilityExplorer exploreToFile:path];
+        dispatch_async(dispatch_get_main_queue(), ^{
+            [[NSWorkspace sharedWorkspace] openURL:[NSURL fileURLWithPath:path]];
+        });
+    });
+}
+
+- (IBAction)debugRunTests:(id)sender {
+    dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
+        [WAAccessibilityTest runAllTests];
+    });
+}
+
+- (IBAction)debugGlobalSearch:(id)sender {
     dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
         [WAAccessibilityTest testGlobalSearch:@"SCB"];
     });
 }
 
-- (IBAction)testGlobalSearchCustom:(id)sender {
+- (IBAction)debugGlobalSearchCustom:(id)sender {
     NSString *query = [self showInputDialogWithTitle:@"Global Search Test"
                                              message:@"Enter search query:"
                                          placeholder:@"Enter search term..."
@@ -439,7 +499,7 @@
     }
 }
 
-- (IBAction)testOpenChat:(id)sender {
+- (IBAction)debugOpenChat:(id)sender {
     NSString *name = [self showInputDialogWithTitle:@"Open Chat"
                                             message:@"Enter chat name:"
                                         placeholder:@"Enter chat name..."
@@ -451,37 +511,21 @@
     }
 }
 
-- (IBAction)testClearSearch:(id)sender {
+- (IBAction)debugClearSearch:(id)sender {
     dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
         [WAAccessibilityTest testClearSearch];
     });
 }
 
-- (IBAction)testClipboardPaste:(id)sender {
+- (IBAction)debugClipboardPaste:(id)sender {
     dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
         [WAAccessibilityTest testClipboardPaste:@"SCB"];
     });
 }
 
-- (IBAction)testCharacterTyping:(id)sender {
+- (IBAction)debugCharacterTyping:(id)sender {
     dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
         [WAAccessibilityTest testCharacterTyping:@"SCB"];
-    });
-}
-
-- (IBAction)explore:(id)sender {
-    dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
-        NSString *path = [@"~/Desktop/whatsapp_ax.txt" stringByExpandingTildeInPath];
-        [WAAccessibilityExplorer exploreToFile:path];
-        dispatch_async(dispatch_get_main_queue(), ^{
-            [[NSWorkspace sharedWorkspace] openURL:[NSURL fileURLWithPath:path]];
-        });
-    });
-}
-
-- (IBAction)runTests:(id)sender {
-    dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
-        [WAAccessibilityTest runAllTests];
     });
 }
 
@@ -527,31 +571,31 @@
     });
 }
 
--(IBAction)debugClickEsc:(id)sender {
+- (IBAction)debugClickEsc:(id)sender {
     dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
         [WAAccessibilityTest testPressEsc];
     });
 }
 
--(IBAction)debugClickCmdF:(id)sender {
+- (IBAction)debugClickCmdF:(id)sender {
     dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
         [WAAccessibilityTest testPressCmdF];
     });
 }
 
--(IBAction)debugClickA:(id)sender {
+- (IBAction)debugClickA:(id)sender {
     dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
         [WAAccessibilityTest testPressA];
     });
 }
 
--(IBAction)debugClickX:(id)sender {
+- (IBAction)debugClickX:(id)sender {
     dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
         [WAAccessibilityTest testPressX];
     });
 }
 
-- (IBAction)debugTypeInABC:(id)sender{
+- (IBAction)debugTypeInABC:(id)sender {
     dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
         [WAAccessibilityTest testTypeInABC];
     });
@@ -563,53 +607,10 @@
     });
 }
 
-- (IBAction)debugGetCurrentChat:(id)sender
-{
+- (IBAction)debugGetCurrentChat:(id)sender {
     dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
         [WAAccessibilityTest testGetCurrentChat];
-    }) ;
-}
-
-
-- (IBAction)uninstallApp:(id)sender {
-    NSAlert *alert = [[NSAlert alloc] init];
-    alert.messageText = @"Uninstall mcpwa?";
-    alert.informativeText = @"This will remove mcpwa from Claude Desktop and quit the app. You can then drag mcpwa to Trash.";
-    [alert addButtonWithTitle:@"Uninstall"];
-    [alert addButtonWithTitle:@"Cancel"];
-    
-    if ([alert runModal] == NSAlertFirstButtonReturn) {
-        [self removeFromClaudeConfig];
-        
-        NSAlert *done = [[NSAlert alloc] init];
-        done.messageText = @"mcpwa unregistered";
-        done.informativeText = @"You can now drag mcpwa from Applications to Trash.";
-        [done runModal];
-        
-        [NSApp terminate:nil];
-    }
-}
-
-- (void)removeFromClaudeConfig {
-    NSString *configPath = [NSHomeDirectory() stringByAppendingPathComponent:
-        @"Library/Application Support/Claude/claude_desktop_config.json"];
-    
-    NSData *data = [NSData dataWithContentsOfFile:configPath];
-    if (!data) return;
-    
-    NSError *error;
-    NSMutableDictionary *config = [NSJSONSerialization JSONObjectWithData:data
-        options:NSJSONReadingMutableContainers error:&error];
-    if (!config) return;
-    
-    NSMutableDictionary *servers = config[@"mcpServers"];
-    if (servers && servers[@"mcpwa"]) {
-        [servers removeObjectForKey:@"mcpwa"];
-        
-        NSData *newData = [NSJSONSerialization dataWithJSONObject:config
-            options:NSJSONWritingPrettyPrinted error:&error];
-        [newData writeToFile:configPath atomically:YES];
-    }
+    });
 }
 
 @end

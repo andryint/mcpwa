@@ -12,12 +12,15 @@
 - (void)appendLog:(NSString *)message;
 - (void)appendLog:(NSString *)message color:(NSColor *)color;
 
-#pragma mark - Debug Actions
-- (IBAction)explore:(id)sender;
-- (IBAction)runTests:(id)sender;
-- (IBAction)testGlobalSearch:(id)sender;
-- (IBAction)testGlobalSearchCustom:(id)sender;
-- (IBAction)testClearSearch:(id)sender;
+#pragma mark - Debug Menu Actions
+- (IBAction)debugExplore:(id)sender;
+- (IBAction)debugRunTests:(id)sender;
+- (IBAction)debugGlobalSearch:(id)sender;
+- (IBAction)debugGlobalSearchCustom:(id)sender;
+- (IBAction)debugOpenChat:(id)sender;
+- (IBAction)debugClearSearch:(id)sender;
+- (IBAction)debugClipboardPaste:(id)sender;
+- (IBAction)debugCharacterTyping:(id)sender;
 - (IBAction)debugGetSearchResults:(id)sender;
 - (IBAction)debugSearchAndParse:(id)sender;
 - (IBAction)debugClickResult0:(id)sender;
@@ -30,6 +33,7 @@
 - (IBAction)debugClickX:(id)sender;
 - (IBAction)debugTypeInABC:(id)sender;
 - (IBAction)debugReadChatList:(id)sender;
+- (IBAction)debugGetCurrentChat:(id)sender;
 
 
 @end
