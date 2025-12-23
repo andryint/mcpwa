@@ -2,3 +2,4 @@
 **/*.xcuserstate
 /mcp-shim/mcp-shim
 xcuserdata/
+/.claude/
