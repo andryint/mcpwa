@@ -1492,32 +1492,64 @@
 - (BOOL)clickButtonWithIdentifier:(NSString *)identifier {
     AXUIElementRef window = [self getMainWindow];
     if (!window) return NO;
-    
+
     BOOL result = NO;
     AXUIElementRef button = [self findElementWithIdentifier:identifier inElement:window];
     if (button) {
         result = [self pressElement:button];
         CFRelease(button);
     }
-    
+
+    CFRelease(window);
+    return result;
+}
+
+- (BOOL)clickSidebarButtonWithDescription:(NSString *)description {
+    AXUIElementRef window = [self getMainWindow];
+    if (!window) return NO;
+
+    BOOL result = NO;
+
+    // Find the Sidebar_view group first
+    AXUIElementRef sidebar = [self findElementWithIdentifier:@"Sidebar_view" inElement:window];
+    if (sidebar) {
+        // Find button with matching description inside sidebar
+        // Description contains Unicode LTR marks, so use containsString
+        NSArray *buttons = [self findElementsIn:sidebar predicate:^BOOL(AXUIElementRef element, NSString *role, NSString *identifier) {
+            if (![role isEqualToString:@"AXButton"]) return NO;
+            NSString *desc = [self descriptionOfElement:element];
+            return desc && [desc containsString:description];
+        } maxDepth:3];
+
+        if (buttons.count > 0) {
+            result = [self pressElement:(__bridge AXUIElementRef)buttons[0]];
+        }
+
+        // Release all found elements
+        for (id btn in buttons) {
+            CFRelease((__bridge AXUIElementRef)btn);
+        }
+        CFRelease(sidebar);
+    }
+
     CFRelease(window);
     return result;
 }
 
 - (BOOL)navigateToChats {
-    return [self clickButtonWithIdentifier:@"TabBarButton_Chats"];
+    return [self clickSidebarButtonWithDescription:@"Chats"];
 }
 
 - (BOOL)navigateToCalls {
-    return [self clickButtonWithIdentifier:@"TabBarButton_Calls"];
+    return [self clickSidebarButtonWithDescription:@"Calls"];
 }
 
 - (BOOL)navigateToArchived {
-    return [self clickButtonWithIdentifier:@"TabBarButton_Archived"];
+    return [self clickSidebarButtonWithDescription:@"Archived"];
 }
 
 - (BOOL)navigateToSettings {
-    return [self clickButtonWithIdentifier:@"TabBarButton_Settings"];
+    return [self clickSidebarButtonWithDescription:@"Settings"];
 }
 
 @end

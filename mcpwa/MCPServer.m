@@ -172,6 +172,24 @@ static NSString * const kServerVersion = @"1.0.0";
     
     NSArray *tools = @[
         @{
+            @"name": @"whatsapp_start_session",
+            @"description": @"Call this at the START of processing any user prompt that requires WhatsApp access. Initializes WhatsApp by navigating to Chats tab and clearing stale search state. Pattern: start_session -> [your WhatsApp operations] -> stop_session.",
+            @"inputSchema": @{
+                @"type": @"object",
+                @"properties": @{},
+                @"required": @[]
+            }
+        },
+        @{
+            @"name": @"whatsapp_stop_session",
+            @"description": @"Call this at the END of processing any user prompt that required WhatsApp access. Cleans up by clearing any active search. Pattern: start_session -> [your WhatsApp operations] -> stop_session.",
+            @"inputSchema": @{
+                @"type": @"object",
+                @"properties": @{},
+                @"required": @[]
+            }
+        },
+        @{
             @"name": @"whatsapp_status",
             @"description": @"Check WhatsApp accessibility status - whether the app is running and permissions are granted",
             @"inputSchema": @{
@@ -328,7 +346,11 @@ static NSString * const kServerVersion = @"1.0.0";
     }
     
     // Dispatch to tool implementations
-    if ([toolName isEqualToString:@"whatsapp_status"]) {
+    if ([toolName isEqualToString:@"whatsapp_start_session"]) {
+        [self toolStartSession:requestId];
+    } else if ([toolName isEqualToString:@"whatsapp_stop_session"]) {
+        [self toolStopSession:requestId];
+    } else if ([toolName isEqualToString:@"whatsapp_status"]) {
         [self toolStatus:requestId];
     } else if ([toolName isEqualToString:@"whatsapp_list_chats"]) {
         [self toolListRecentChats:args[@"filter"] id:requestId];
@@ -371,25 +393,83 @@ static NSString * const kServerVersion = @"1.0.0";
 
 - (void)toolStatus:(id)requestId {
     WAAccessibility *wa = [WAAccessibility shared];
-    
+
     BOOL isAvailable = [wa isWhatsAppAvailable];
-    
+
     NSString *message;
     if (isAvailable) {
         message = @"WhatsApp is running and accessible";
     } else {
         message = @"WhatsApp is not available. Ensure it's running and accessibility permissions are granted.";
     }
-    
+
     NSDictionary *status = @{
         @"available": @(isAvailable),
         @"ready": @(isAvailable),
         @"message": message
     };
-    
-    [self log:[NSString stringWithFormat:@"   Status: %@", isAvailable ? @"Ready" : @"Not ready"] 
+
+    [self log:[NSString stringWithFormat:@"   Status: %@", isAvailable ? @"Ready" : @"Not ready"]
         color:NSColor.systemGrayColor];
     [self sendToolResult:[self jsonStringPretty:status] id:requestId];
+}
+
+- (void)toolStartSession:(id)requestId {
+    if (![self checkPrerequisites:requestId]) return;
+
+    WAAccessibility *wa = [WAAccessibility shared];
+
+    // 1. Navigate to Chats tab to ensure we're in Chat mode
+    [self log:@"   Navigating to Chats tab..." color:NSColor.systemGrayColor];
+    BOOL navigated = [wa navigateToChats];
+    if (!navigated) {
+        [self log:@"   Warning: Could not click Chats tab button" color:NSColor.yellowColor];
+    }
+    [NSThread sleepForTimeInterval:0.3];
+
+    // 2. Clear any active search
+    if ([wa isInSearchMode]) {
+        [self log:@"   Clearing active search..." color:NSColor.systemGrayColor];
+        [wa clearSearch];
+        [NSThread sleepForTimeInterval:0.3];
+    }
+
+    // 3. Ensure filter is set to "All"
+    WAChatFilter currentFilter = [wa getSelectedChatFilter];
+    if (currentFilter != WAChatFilterAll) {
+        [self log:@"   Setting filter to All..." color:NSColor.systemGrayColor];
+        [wa selectChatFilter:WAChatFilterAll];
+        [NSThread sleepForTimeInterval:0.2];
+    }
+
+    NSDictionary *result = @{
+        @"success": @YES,
+        @"message": @"Session started. WhatsApp is now in Chat mode with filter set to 'All'."
+    };
+
+    [self log:@"   Session started" color:NSColor.greenColor];
+    [self sendToolResult:[self jsonStringPretty:result] id:requestId];
+}
+
+- (void)toolStopSession:(id)requestId {
+    if (![self checkPrerequisites:requestId]) return;
+
+    WAAccessibility *wa = [WAAccessibility shared];
+
+    // Clear any active search to leave WhatsApp in a clean state
+    if ([wa isInSearchMode]) {
+        [self log:@"   Clearing active search..." color:NSColor.systemGrayColor];
+        [wa clearSearch];
+        [NSThread sleepForTimeInterval:0.3];
+    }
+
+    NSDictionary *result = @{
+        @"success": @YES,
+        @"message": @"Session stopped. Search cleared."
+    };
+
+    [self log:@"   Session stopped" color:NSColor.greenColor];
+    [self sendToolResult:[self jsonStringPretty:result] id:requestId];
 }
 
 - (void)toolListRecentChats:(NSString *)filterString id:(id)requestId

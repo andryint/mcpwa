@@ -18,6 +18,24 @@ static BOOL stdinClosed = NO;
 NSArray* getMcpwaTools(void) {
     return @[
         @{
+            @"name": @"whatsapp_start_session",
+            @"description": @"Call this at the START of processing any user prompt that requires WhatsApp access. Initializes WhatsApp by navigating to Chats tab and clearing stale search state. Pattern: start_session -> [your WhatsApp operations] -> stop_session.",
+            @"inputSchema": @{
+                @"type": @"object",
+                @"properties": @{},
+                @"required": @[]
+            }
+        },
+        @{
+            @"name": @"whatsapp_stop_session",
+            @"description": @"Call this at the END of processing any user prompt that required WhatsApp access. Cleans up by clearing any active search. Pattern: start_session -> [your WhatsApp operations] -> stop_session.",
+            @"inputSchema": @{
+                @"type": @"object",
+                @"properties": @{},
+                @"required": @[]
+            }
+        },
+        @{
             @"name": @"whatsapp_status",
             @"description": @"Check WhatsApp accessibility status - whether the app is running and permissions are granted",
             @"inputSchema": @{
@@ -270,7 +288,7 @@ void handleLocalRequest(NSDictionary *request) {
             @"result": @{@"tools": getMcpwaTools()}
         };
         sendJsonResponse(response);
-        os_log_info(logger, "Returned mcpwa tools list (11 tools, server not connected)");
+        os_log_info(logger, "Returned mcpwa tools list (13 tools, server not connected)");
     }
     else if ([method isEqualToString:@"tools/call"]) {
         // Server not connected - return error
