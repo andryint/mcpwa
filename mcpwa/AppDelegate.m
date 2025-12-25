@@ -140,31 +140,50 @@
 
 - (void)checkInitialStatus {
     WAAccessibility *wa = [WAAccessibility shared];
-    
+
     // Check if accessibility is trusted
     BOOL hasPermission = AXIsProcessTrusted();
+
+    // Check screen recording permission (required on macOS Sonoma+ for some AX operations)
+    BOOL hasScreenRecording = CGPreflightScreenCaptureAccess();
+
     BOOL isAvailable = [wa isWhatsAppAvailable];
-    
+
+    // If not available on first check, try to ensure WhatsApp is visible
+    if (hasPermission && !isAvailable) {
+        [self appendLog:@"WhatsApp not immediately available, trying to make visible..."];
+        if ([wa ensureWhatsAppVisible]) {
+            isAvailable = [wa isWhatsAppAvailable];
+        }
+    }
+
     [self appendLog:@"Startup checks:"];
     [self appendLog:[NSString stringWithFormat:@"  • Accessibility permission: %@",
                      hasPermission ? @"✅ Granted" : @"❌ Not granted"]
               color:hasPermission ? NSColor.greenColor : NSColor.redColor];
+    [self appendLog:[NSString stringWithFormat:@"  • Screen Recording permission: %@",
+                     hasScreenRecording ? @"✅ Granted" : @"⚠️ Not granted (may be needed)"]
+              color:hasScreenRecording ? NSColor.greenColor : NSColor.yellowColor];
     [self appendLog:[NSString stringWithFormat:@"  • WhatsApp accessible: %@",
                      isAvailable ? @"✅ Yes" : @"⚠️ No"]
               color:isAvailable ? NSColor.greenColor : NSColor.yellowColor];
     [self appendLog:@""];
-    
+
     [self updateStatusLabel];
-    
+
     if (!hasPermission) {
         [self appendLog:@"⚠️  Please grant Accessibility permission:" color:NSColor.yellowColor];
         [self appendLog:@"   System Settings → Privacy & Security → Accessibility" color:NSColor.yellowColor];
         [self appendLog:@"   Add and enable this app, then click 'Check Status'" color:NSColor.yellowColor];
         [self appendLog:@""];
     }
-    
+
     if (hasPermission && !isAvailable) {
         [self appendLog:@"ℹ️  Launch WhatsApp Desktop to enable message reading" color:NSColor.systemBlueColor];
+        if (!hasScreenRecording) {
+            [self appendLog:@"   If WhatsApp is running, try granting Screen Recording permission:" color:NSColor.systemBlueColor];
+            [self appendLog:@"   System Settings → Privacy & Security → Screen Recording" color:NSColor.systemBlueColor];
+        }
         [self appendLog:@""];
     }
 }
@@ -289,24 +308,36 @@
 
 - (void)checkPermissions:(id)sender {
     [self appendLog:@"Checking status..." color:NSColor.cyanColor];
-    
+
+    // MCP Server status
+    if (self.serverRunning) {
+        [self appendLog:@"  • MCP Server: ✅ Running" color:NSColor.greenColor];
+        if (self.server.isConnected) {
+            [self appendLog:@"  • MCP Client: ✅ Connected" color:NSColor.greenColor];
+        } else {
+            [self appendLog:@"  • MCP Client: ⏳ Waiting for connection..." color:NSColor.yellowColor];
+        }
+    } else {
+        [self appendLog:@"  • MCP Server: ⚠️ Not running" color:NSColor.yellowColor];
+    }
+
     BOOL hasPermission = AXIsProcessTrusted();
     WAAccessibility *wa = [WAAccessibility shared];
     BOOL isAvailable = [wa isWhatsAppAvailable];
-    
+
     [self appendLog:[NSString stringWithFormat:@"  • Accessibility: %@",
                      hasPermission ? @"✅ Granted" : @"❌ Not granted"]
               color:hasPermission ? NSColor.greenColor : NSColor.redColor];
     [self appendLog:[NSString stringWithFormat:@"  • WhatsApp: %@",
                      isAvailable ? @"✅ Available" : @"⚠️ Not available"]
               color:isAvailable ? NSColor.greenColor : NSColor.yellowColor];
-    
+
     if (hasPermission && isAvailable) {
         // Quick test - get chats
         NSArray<WAChat *> *chats = [wa getRecentChats];
         [self appendLog:[NSString stringWithFormat:@"  • Chat access: ✅ Found %lu chats", (unsigned long)chats.count]
                   color:NSColor.greenColor];
-        
+
         // Show first few chat names
         for (NSInteger i = 0; i < MIN(3, chats.count); i++) {
             [self appendLog:[NSString stringWithFormat:@"      → %@", chats[i].name]
@@ -317,7 +348,7 @@
                       color:NSColor.systemGrayColor];
         }
     }
-    
+
     [self appendLog:@""];
     [self updateStatusLabel];
 }

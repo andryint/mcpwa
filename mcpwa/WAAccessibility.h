@@ -88,6 +88,11 @@ typedef NS_ENUM(NSInteger, WAMessageDirection) {
 
 /// Activate WhatsApp window
 - (BOOL)activateWhatsApp;
+
+/// Ensure WhatsApp is visible (unminimize from Dock if needed, unhide if hidden)
+/// Call this before operations that require the WhatsApp window to be accessible
+- (BOOL)ensureWhatsAppVisible;
+
 - (AXUIElementRef)getMainWindow;
 - (void)pressKey:(CGKeyCode)keyCode withFlags:(CGEventFlags)flags toProcess:(pid_t)pid;
 - (void)typeString:(NSString *)string toProcess:(pid_t)pid;

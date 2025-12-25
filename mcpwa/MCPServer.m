@@ -381,13 +381,19 @@ static NSString * const kServerVersion = @"1.0.0";
 
 - (BOOL)checkPrerequisites:(id)requestId {
     WAAccessibility *wa = [WAAccessibility shared];
-    
+
     if (![wa isWhatsAppAvailable]) {
         [self log:@"❌ WhatsApp not available" color:NSColor.redColor];
         [self sendToolError:@"WhatsApp is not available.\n\nPlease ensure:\n1. WhatsApp Desktop is running\n2. mcpwa has Accessibility permissions in System Settings → Privacy & Security → Accessibility" id:requestId];
         return NO;
     }
-    
+
+    // Ensure WhatsApp is visible (unminimize from Dock if needed)
+    if (![wa ensureWhatsAppVisible]) {
+        [self log:@"⚠️ Could not make WhatsApp visible" color:NSColor.yellowColor];
+        // Don't fail - the operation might still work if window is accessible
+    }
+
     return YES;
 }
 

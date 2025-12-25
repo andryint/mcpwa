@@ -280,28 +280,31 @@
 #pragma mark - WhatsApp Connection
 
 - (BOOL)connectToWhatsApp {
-    // If we have a cached PID, verify the process is still actually running
-    if (self.whatsappPID > 0) {
+    // If we have a cached PID and element, verify the process is still running
+    if (self.whatsappPID > 0 && self.appElement) {
         // kill(pid, 0) checks if process exists without sending a signal
+        errno = 0;  // Reset errno before call
         int killResult = kill(self.whatsappPID, 0);
-        // [WALogger debug:@"connectToWhatsApp: cached PID %d, kill(0) = %d, errno = %d", self.whatsappPID, killResult, errno];
-        if (killResult != 0) {
-            // Process no longer exists - clear cached state
-            // [WALogger debug:@"connectToWhatsApp: cached PID %d no longer exists, clearing", self.whatsappPID];
-            if (self.appElement) {
-                CFRelease(self.appElement);
-                self.appElement = NULL;
-            }
-            self.whatsappPID = 0;
+        int savedErrno = errno;
+        [WALogger debug:@"connectToWhatsApp: cached PID %d, kill(0) = %d, errno = %d", self.whatsappPID, killResult, savedErrno];
+        if (killResult == 0) {
+            // Process still exists - reuse cached connection
+            [WALogger debug:@"connectToWhatsApp: reusing cached connection to PID %d", self.whatsappPID];
+            return YES;
         }
+        // Process no longer exists - clear cached state
+        [WALogger debug:@"connectToWhatsApp: cached PID %d no longer exists, clearing", self.whatsappPID];
+        CFRelease(self.appElement);
+        self.appElement = NULL;
+        self.whatsappPID = 0;
     }
 
     // Look for WhatsApp in running applications
     NSArray *apps = [NSRunningApplication runningApplicationsWithBundleIdentifier:@"net.whatsapp.WhatsApp"];
-    // [WALogger debug:@"connectToWhatsApp: found %lu apps with bundle id", (unsigned long)apps.count];
+    [WALogger debug:@"connectToWhatsApp: found %lu apps with bundle id", (unsigned long)apps.count];
 
     for (NSRunningApplication *app in apps) {
-        // [WALogger debug:@"connectToWhatsApp: app PID=%d terminated=%d", app.processIdentifier, app.terminated];
+        [WALogger debug:@"connectToWhatsApp: app PID=%d terminated=%d", app.processIdentifier, app.terminated];
 
         // Skip terminated processes
         if (app.terminated) continue;
@@ -309,8 +312,10 @@
         pid_t pid = app.processIdentifier;
 
         // Double-check with kill(0) that process actually exists
+        errno = 0;  // Reset errno before call
         int killResult = kill(pid, 0);
-        // [WALogger debug:@"connectToWhatsApp: kill(%d, 0) = %d, errno = %d", pid, killResult, errno];
+        int savedErrno = errno;
+        [WALogger debug:@"connectToWhatsApp: kill(%d, 0) = %d, errno = %d", pid, killResult, savedErrno];
         if (killResult != 0) continue;
 
         self.whatsappPID = pid;
@@ -319,12 +324,12 @@
             CFRelease(self.appElement);
         }
         self.appElement = AXUIElementCreateApplication(self.whatsappPID);
-        // [WALogger debug:@"connectToWhatsApp: connected to PID %d", pid];
+        [WALogger debug:@"connectToWhatsApp: created new connection to PID %d, appElement=%p", pid, (void *)self.appElement];
         return self.appElement != NULL;
     }
 
     // WhatsApp not running - clear any stale cached element
-    // [WALogger debug:@"connectToWhatsApp: no valid WhatsApp found"];
+    [WALogger debug:@"connectToWhatsApp: no valid WhatsApp found"];
     if (self.appElement) {
         CFRelease(self.appElement);
         self.appElement = NULL;
@@ -335,13 +340,18 @@
 }
 
 - (BOOL)isWhatsAppAvailable {
+    [WALogger debug:@"isWhatsAppAvailable: checking..."];
+
     if (![self connectToWhatsApp]) {
+        [WALogger debug:@"isWhatsAppAvailable: connectToWhatsApp failed"];
         return NO;
     }
 
     // Verify we can actually query it
     NSString *role = [self roleOfElement:self.appElement];
+    [WALogger debug:@"isWhatsAppAvailable: appElement role = '%@'", role ?: @"<nil>"];
     if (![role isEqualToString:@"AXApplication"]) {
+        [WALogger debug:@"isWhatsAppAvailable: role mismatch, expected AXApplication"];
         return NO;
     }
 
@@ -349,21 +359,22 @@
     // have a running process but no windows, making it unusable
     AXUIElementRef window = [self getMainWindow];
     if (!window) {
-        [WALogger debug:@"isWhatsAppAvailable: process exists but no windows - app is quitting"];
+        [WALogger debug:@"isWhatsAppAvailable: process exists but no windows - app may be minimized or starting up"];
         return NO;
     }
     CFRelease(window);
 
+    [WALogger debug:@"isWhatsAppAvailable: YES"];
     return YES;
 }
 
 - (BOOL)activateWhatsApp {
     NSArray *apps = [[NSWorkspace sharedWorkspace] runningApplications];
-    
+
     for (NSRunningApplication *app in apps) {
         if ([app.bundleIdentifier isEqualToString:@"net.whatsapp.WhatsApp"]) {
             BOOL activated = [app activateWithOptions:NSApplicationActivateIgnoringOtherApps];
-            
+
             if (activated) {
                 // Wait until WhatsApp is actually frontmost (up to 1 second)
                 for (int i = 0; i < 20; i++) {
@@ -378,33 +389,145 @@
             return activated;
         }
     }
-    
+
+    return NO;
+}
+
+- (BOOL)ensureWhatsAppVisible {
+    // Find WhatsApp in running applications
+    NSArray *apps = [NSRunningApplication runningApplicationsWithBundleIdentifier:@"net.whatsapp.WhatsApp"];
+    [WALogger debug:@"ensureWhatsAppVisible: found %lu WhatsApp instances", (unsigned long)apps.count];
+
+    for (NSRunningApplication *app in apps) {
+        if (app.terminated) continue;
+
+        [WALogger debug:@"ensureWhatsAppVisible: app PID=%d hidden=%d active=%d",
+            app.processIdentifier, app.isHidden, app.isActive];
+
+        // Check if the app is hidden (Cmd+H) - need to unhide it
+        if (app.isHidden) {
+            [WALogger debug:@"ensureWhatsAppVisible: WhatsApp is hidden, unhiding"];
+            [app unhide];
+            [NSThread sleepForTimeInterval:0.3];
+        }
+
+        // Check if window is available - if so, we're good
+        AXUIElementRef window = [self getMainWindow];
+        if (window) {
+            CFRelease(window);
+            [WALogger debug:@"ensureWhatsAppVisible: WhatsApp window already available"];
+            return YES;
+        }
+
+        // Window not available - it's likely minimized to Dock or on another Space
+        [WALogger debug:@"ensureWhatsAppVisible: No window from getMainWindow, checking minimized state"];
+
+        if (![self connectToWhatsApp]) {
+            [WALogger warn:@"ensureWhatsAppVisible: Could not connect to WhatsApp"];
+            return NO;
+        }
+
+        // Get windows attribute - minimized windows should be included
+        CFTypeRef windowsValue = NULL;
+        AXError err = AXUIElementCopyAttributeValue(self.appElement, kAXWindowsAttribute, &windowsValue);
+        [WALogger debug:@"ensureWhatsAppVisible: kAXWindowsAttribute err=%d", (int)err];
+
+        if (err == kAXErrorSuccess && windowsValue) {
+            NSArray *windows = (__bridge NSArray *)windowsValue;
+            [WALogger debug:@"ensureWhatsAppVisible: found %lu windows in array", (unsigned long)windows.count];
+
+            for (id winObj in windows) {
+                AXUIElementRef winRef = (__bridge AXUIElementRef)winObj;
+
+                // Get window title for debugging
+                NSString *title = [self titleOfElement:winRef];
+                [WALogger debug:@"ensureWhatsAppVisible: window title='%@'", title ?: @"<nil>"];
+
+                // Check if window is minimized
+                CFTypeRef minimizedValue = NULL;
+                AXError minErr = AXUIElementCopyAttributeValue(winRef, kAXMinimizedAttribute, &minimizedValue);
+
+                if (minErr == kAXErrorSuccess && minimizedValue) {
+                    BOOL isMinimized = CFBooleanGetValue(minimizedValue);
+                    CFRelease(minimizedValue);
+                    [WALogger debug:@"ensureWhatsAppVisible: window minimized=%d", isMinimized];
+
+                    if (isMinimized) {
+                        [WALogger debug:@"ensureWhatsAppVisible: Unminimizing window"];
+                        AXError setErr = AXUIElementSetAttributeValue(winRef, kAXMinimizedAttribute, kCFBooleanFalse);
+                        [WALogger debug:@"ensureWhatsAppVisible: unminimize result=%d", (int)setErr];
+                        [NSThread sleepForTimeInterval:0.3];
+                    }
+                } else {
+                    [WALogger debug:@"ensureWhatsAppVisible: kAXMinimizedAttribute failed, err=%d", (int)minErr];
+                }
+            }
+
+            CFRelease(windowsValue);
+        } else {
+            [WALogger debug:@"ensureWhatsAppVisible: kAXWindowsAttribute returned nothing or failed"];
+        }
+
+        // Verify we have a window now
+        window = [self getMainWindow];
+        if (window) {
+            CFRelease(window);
+            [WALogger debug:@"ensureWhatsAppVisible: WhatsApp window now available"];
+            return YES;
+        }
+
+        // Last resort: try activating the app to force window to appear
+        [WALogger debug:@"ensureWhatsAppVisible: Still no window, trying to activate app"];
+        [app activateWithOptions:NSApplicationActivateIgnoringOtherApps];
+        [NSThread sleepForTimeInterval:0.5];
+
+        window = [self getMainWindow];
+        if (window) {
+            CFRelease(window);
+            [WALogger debug:@"ensureWhatsAppVisible: WhatsApp window available after activation"];
+            return YES;
+        }
+
+        [WALogger warn:@"ensureWhatsAppVisible: Could not make WhatsApp window available"];
+        return NO;
+    }
+
+    [WALogger warn:@"ensureWhatsAppVisible: WhatsApp is not running"];
     return NO;
 }
 
 - (AXUIElementRef)getMainWindow {
-    if (![self connectToWhatsApp]) return NULL;
-    if (!self.appElement) return NULL;
-    
-    CFTypeRef windowsValue = NULL;
-    AXError err = AXUIElementCopyAttributeValue(self.appElement, kAXWindowsAttribute, &windowsValue);
-    
-    if (err != kAXErrorSuccess || !windowsValue) {
+    if (![self connectToWhatsApp]) {
+        [WALogger debug:@"getMainWindow: connectToWhatsApp failed"];
         return NULL;
     }
-    
+    if (!self.appElement) {
+        [WALogger debug:@"getMainWindow: appElement is NULL"];
+        return NULL;
+    }
+
+    CFTypeRef windowsValue = NULL;
+    AXError err = AXUIElementCopyAttributeValue(self.appElement, kAXWindowsAttribute, &windowsValue);
+
+    if (err != kAXErrorSuccess || !windowsValue) {
+        [WALogger debug:@"getMainWindow: kAXWindowsAttribute failed, err=%d", (int)err];
+        return NULL;
+    }
+
     // Verify it's an array
     if (CFGetTypeID(windowsValue) != CFArrayGetTypeID()) {
+        [WALogger debug:@"getMainWindow: windowsValue is not an array"];
         CFRelease(windowsValue);
         return NULL;
     }
-    
+
     NSArray *windows = (__bridge NSArray *)windowsValue;  // Don't transfer - we'll release manually
+    [WALogger debug:@"getMainWindow: found %lu windows", (unsigned long)windows.count];
     AXUIElementRef result = NULL;
-    
+
     if (windows.count > 0) {
         AXUIElementRef window = (__bridge AXUIElementRef)windows[0];
-        
+
         // Quick validation
         CFTypeRef roleValue = NULL;
         AXError roleErr = AXUIElementCopyAttributeValue(window, kAXRoleAttribute, &roleValue);
@@ -412,9 +535,11 @@
             CFRelease(roleValue);
             // Retain the window since we're returning it and windowsValue will be released
             result = (AXUIElementRef)CFRetain(window);
+        } else {
+            [WALogger debug:@"getMainWindow: window role query failed, err=%d", (int)roleErr];
         }
     }
-    
+
     CFRelease(windowsValue);
     return result;  // Caller is responsible for releasing this
 }
