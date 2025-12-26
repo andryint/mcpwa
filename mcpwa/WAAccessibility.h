@@ -140,6 +140,14 @@ typedef NS_ENUM(NSInteger, WAMessageDirection) {
 /// Open chat by name (convenience method)
 - (BOOL)openChatWithName:(NSString *)name;
 
+/// Scroll the chat list down by one page (selects last visible chat, presses Next Chat)
+/// @return Array of WAChat objects representing all visible chats after scrolling
+- (NSArray<WAChat *> *)scrollChatListDown;
+
+/// Scroll the chat list up by one page (selects first visible chat, presses Previous Chat)
+/// @return Array of WAChat objects representing all visible chats after scrolling
+- (NSArray<WAChat *> *)scrollChatListUp;
+
 #pragma mark - Current Chat
 
 /// Get info about the currently open chat

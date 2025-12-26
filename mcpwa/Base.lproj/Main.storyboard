@@ -282,6 +282,19 @@
                                                 </items>
                                             </menu>
                                         </menuItem>
+                                        <menuItem isSeparatorItem="YES" id="scr-sep-001"/>
+                                        <menuItem title="Scroll Chats Down" id="scr-cht-dn1" userLabel="Scroll Chats Down">
+                                            <modifierMask key="keyEquivalentModifierMask"/>
+                                            <connections>
+                                                <action selector="debugScrollChatsDown:" target="Voe-Tx-rLC" id="scr-cht-dn-act"/>
+                                            </connections>
+                                        </menuItem>
+                                        <menuItem title="Scroll Chats Up" id="scr-cht-up1" userLabel="Scroll Chats Up">
+                                            <modifierMask key="keyEquivalentModifierMask"/>
+                                            <connections>
+                                                <action selector="debugScrollChatsUp:" target="Voe-Tx-rLC" id="scr-cht-up-act"/>
+                                            </connections>
+                                        </menuItem>
                                     </items>
                                 </menu>
                             </menuItem>

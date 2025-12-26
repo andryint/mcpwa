@@ -1114,4 +1114,102 @@
     [WALogger info:@"========================================"];
 }
 
+#pragma mark - Scroll Tests
+
++ (void)testScrollChatsDown {
+    [WALogger info:@""];
+    [WALogger info:@"========================================"];
+    [WALogger info:@"[TEST] Scroll Chat List Down"];
+    [WALogger info:@"========================================"];
+
+    WAAccessibility *wa = [WAAccessibility shared];
+
+    if (![wa isWhatsAppAvailable]) {
+        [WALogger error:@"  ✗ WhatsApp not available"];
+        return;
+    }
+
+    // Get initial chats
+    NSArray<WAChat *> *initialChats = [wa getRecentChats];
+    [WALogger info:@"  Before scroll: %lu chats visible", (unsigned long)initialChats.count];
+    if (initialChats.count > 0) {
+        [WALogger info:@"  First: %@", [[initialChats firstObject] name]];
+        [WALogger info:@"  Last: %@", [[initialChats lastObject] name]];
+    }
+
+    [WALogger info:@""];
+    [WALogger info:@"  Scrolling down..."];
+
+    NSArray<WAChat *> *chats = [wa scrollChatListDown];
+
+    [WALogger info:@""];
+    [WALogger info:@"  After scroll: %lu chats visible", (unsigned long)chats.count];
+    if (chats.count > 0) {
+        [WALogger info:@"  First: %@", [[chats firstObject] name]];
+        [WALogger info:@"  Last: %@", [[chats lastObject] name]];
+    }
+
+    [WALogger info:@""];
+    [WALogger info:@"  --- All Visible Chats ---"];
+    for (NSInteger i = 0; i < chats.count; i++) {
+        WAChat *chat = chats[i];
+        [WALogger info:@"  [%ld] %@ %@%@",
+              (long)i,
+              chat.name,
+              chat.isPinned ? @"📌" : @"",
+              chat.isGroup ? @"👥" : @""];
+    }
+
+    [WALogger info:@""];
+    [WALogger info:@"========================================"];
+}
+
++ (void)testScrollChatsUp {
+    [WALogger info:@""];
+    [WALogger info:@"========================================"];
+    [WALogger info:@"[TEST] Scroll Chat List Up"];
+    [WALogger info:@"========================================"];
+
+    WAAccessibility *wa = [WAAccessibility shared];
+
+    if (![wa isWhatsAppAvailable]) {
+        [WALogger error:@"  ✗ WhatsApp not available"];
+        return;
+    }
+
+    // Get initial chats
+    NSArray<WAChat *> *initialChats = [wa getRecentChats];
+    [WALogger info:@"  Before scroll: %lu chats visible", (unsigned long)initialChats.count];
+    if (initialChats.count > 0) {
+        [WALogger info:@"  First: %@", [[initialChats firstObject] name]];
+        [WALogger info:@"  Last: %@", [[initialChats lastObject] name]];
+    }
+
+    [WALogger info:@""];
+    [WALogger info:@"  Scrolling up..."];
+
+    NSArray<WAChat *> *chats = [wa scrollChatListUp];
+
+    [WALogger info:@""];
+    [WALogger info:@"  After scroll: %lu chats visible", (unsigned long)chats.count];
+    if (chats.count > 0) {
+        [WALogger info:@"  First: %@", [[chats firstObject] name]];
+        [WALogger info:@"  Last: %@", [[chats lastObject] name]];
+    }
+
+    [WALogger info:@""];
+    [WALogger info:@"  --- All Visible Chats ---"];
+    for (NSInteger i = 0; i < chats.count; i++) {
+        WAChat *chat = chats[i];
+        [WALogger info:@"  [%ld] %@ %@%@",
+              (long)i,
+              chat.name,
+              chat.isPinned ? @"📌" : @"",
+              chat.isGroup ? @"👥" : @""];
+    }
+
+    [WALogger info:@""];
+    [WALogger info:@"========================================"];
+}
+
 @end

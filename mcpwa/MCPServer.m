@@ -329,6 +329,24 @@ static NSString * const kServerVersion = @"1.0.0";
                 },
                 @"required": @[@"filter"]
             }
+        },
+        @{
+            @"name": @"whatsapp_scroll_chats_down",
+            @"description": @"Scroll the chat list down by one page. Selects the last visible chat and navigates to the next one, causing the list to scroll. Returns the updated list of all visible chats after scrolling.",
+            @"inputSchema": @{
+                @"type": @"object",
+                @"properties": @{},
+                @"required": @[]
+            }
+        },
+        @{
+            @"name": @"whatsapp_scroll_chats_up",
+            @"description": @"Scroll the chat list up by one page. Selects the first visible chat and navigates to the previous one, causing the list to scroll. Returns the updated list of all visible chats after scrolling.",
+            @"inputSchema": @{
+                @"type": @"object",
+                @"properties": @{},
+                @"required": @[]
+            }
         }
     ];
     
@@ -372,6 +390,10 @@ static NSString * const kServerVersion = @"1.0.0";
         [self toolGlobalSearch:args[@"query"] filter:args[@"filter"] id:requestId];
     } else if ([toolName isEqualToString:@"whatsapp_clear_search"]) {
         [self toolClearSearch:requestId];
+    } else if ([toolName isEqualToString:@"whatsapp_scroll_chats_down"]) {
+        [self toolScrollChatsDown:requestId];
+    } else if ([toolName isEqualToString:@"whatsapp_scroll_chats_up"]) {
+        [self toolScrollChatsUp:requestId];
     } else {
         [self sendToolError:[NSString stringWithFormat:@"Unknown tool: %@", toolName] id:requestId];
     }
@@ -780,6 +802,54 @@ static NSString * const kServerVersion = @"1.0.0";
             return @"Showing only group chats";
     }
     return @"Showing all chats";
+}
+
+- (void)toolScrollChatsDown:(id)requestId {
+    if (![self checkPrerequisites:requestId]) return;
+
+    WAAccessibility *wa = [WAAccessibility shared];
+
+    [self log:@"   Scrolling chat list down..." color:NSColor.systemGrayColor];
+
+    NSArray<WAChat *> *chats = [wa scrollChatListDown];
+
+    NSMutableArray *chatDicts = [NSMutableArray arrayWithCapacity:chats.count];
+    for (WAChat *chat in chats) {
+        [chatDicts addObject:[self chatToDictionary:chat]];
+    }
+
+    NSDictionary *result = @{
+        @"count": @(chats.count),
+        @"chats": chatDicts
+    };
+
+    [self log:[NSString stringWithFormat:@"   After scroll down: %lu chats visible", (unsigned long)chats.count]
+        color:NSColor.greenColor];
+    [self sendToolResult:[self jsonStringPretty:result] id:requestId];
+}
+
+- (void)toolScrollChatsUp:(id)requestId {
+    if (![self checkPrerequisites:requestId]) return;
+
+    WAAccessibility *wa = [WAAccessibility shared];
+
+    [self log:@"   Scrolling chat list up..." color:NSColor.systemGrayColor];
+
+    NSArray<WAChat *> *chats = [wa scrollChatListUp];
+
+    NSMutableArray *chatDicts = [NSMutableArray arrayWithCapacity:chats.count];
+    for (WAChat *chat in chats) {
+        [chatDicts addObject:[self chatToDictionary:chat]];
+    }
+
+    NSDictionary *result = @{
+        @"count": @(chats.count),
+        @"chats": chatDicts
+    };
+
+    [self log:[NSString stringWithFormat:@"   After scroll up: %lu chats visible", (unsigned long)chats.count]
+        color:NSColor.greenColor];
+    [self sendToolResult:[self jsonStringPretty:result] id:requestId];
 }
 
 #pragma mark - Data Conversion Helpers

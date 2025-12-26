@@ -175,6 +175,24 @@ NSArray* getMcpwaTools(void) {
                 },
                 @"required": @[@"filter"]
             }
+        },
+        @{
+            @"name": @"whatsapp_scroll_chats_down",
+            @"description": @"Scroll the chat list down by one page. Selects the last visible chat and navigates to the next one, causing the list to scroll. Returns the updated list of all visible chats after scrolling.",
+            @"inputSchema": @{
+                @"type": @"object",
+                @"properties": @{},
+                @"required": @[]
+            }
+        },
+        @{
+            @"name": @"whatsapp_scroll_chats_up",
+            @"description": @"Scroll the chat list up by one page. Selects the first visible chat and navigates to the previous one, causing the list to scroll. Returns the updated list of all visible chats after scrolling.",
+            @"inputSchema": @{
+                @"type": @"object",
+                @"properties": @{},
+                @"required": @[]
+            }
         }
     ];
 }
@@ -288,7 +306,7 @@ void handleLocalRequest(NSDictionary *request) {
             @"result": @{@"tools": getMcpwaTools()}
         };
         sendJsonResponse(response);
-        os_log_info(logger, "Returned mcpwa tools list (13 tools, server not connected)");
+        os_log_info(logger, "Returned mcpwa tools list (15 tools, server not connected)");
     }
     else if ([method isEqualToString:@"tools/call"]) {
         // Server not connected - return error

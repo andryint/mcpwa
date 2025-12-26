@@ -1009,11 +1009,13 @@
             NSString *desc = [self descriptionOfElement:element];
             return desc && [[desc lowercaseString] containsString:[chat.name lowercaseString]];
         } maxDepth:15];
-        
+
         if (buttons.count > 0) {
+            // Scroll element into view before pressing (fixes issue with edge elements)
+            AXUIElementPerformAction((__bridge AXUIElementRef)buttons[0], CFSTR("AXScrollToVisible"));
             result = [self pressElement:(__bridge AXUIElementRef)buttons[0]];
         }
-        
+
         for (id btn in buttons) {
             CFRelease((__bridge AXUIElementRef)btn);
         }
@@ -1025,12 +1027,14 @@
             
             for (id child in children) {
                 AXUIElementRef element = (__bridge AXUIElementRef)child;
-                
+
                 NSString *role = [self roleOfElement:element];
                 if (![role isEqualToString:@"AXButton"]) continue;
-                
+
                 NSString *desc = [self descriptionOfElement:element];
                 if (desc && [[desc lowercaseString] containsString:[chat.name lowercaseString]]) {
+                    // Scroll element into view before pressing (fixes issue with edge elements)
+                    AXUIElementPerformAction(element, CFSTR("AXScrollToVisible"));
                     result = [self pressElement:element];
                     break;
                 }
@@ -1049,6 +1053,118 @@
     WAChat *chat = [self findChatWithName:name];
     if (!chat) return NO;
     return [self openChat:chat];
+}
+
+- (NSArray<WAChat *> *)scrollChatListDown {
+    [WALogger info:@"scrollChatListDown"];
+
+    AXUIElementRef window = [self getMainWindow];
+    if (!window) {
+        [WALogger warn:@"scrollChatListDown: no main window"];
+        return @[];
+    }
+
+    // Clear search mode if active
+    if ([self isInSearchMode]) {
+        [WALogger debug:@"scrollChatListDown: clearing search mode"];
+        [self clearSearch];
+        [NSThread sleepForTimeInterval:0.3];
+    }
+
+    pid_t waPid = self.whatsappPID;
+    if (waPid == 0) {
+        [WALogger warn:@"scrollChatListDown: no WhatsApp PID"];
+        CFRelease(window);
+        return @[];
+    }
+
+    // Activate WhatsApp first to ensure it has focus
+    [self activateWhatsApp];
+    [NSThread sleepForTimeInterval:0.1];
+
+    // Get current chats
+    NSArray<WAChat *> *currentChats = [self getRecentChats];
+    if (currentChats.count == 0) {
+        [WALogger warn:@"scrollChatListDown: no chats visible"];
+        CFRelease(window);
+        return @[];
+    }
+
+    // Find the last visible chat and open it
+    WAChat *lastChat = [currentChats lastObject];
+    [WALogger debug:@"scrollChatListDown: opening last chat: %@", lastChat.name];
+
+    // Use openChat (AXPress) to open the chat
+    [self openChat:lastChat];
+    [NSThread sleepForTimeInterval:0.3];
+
+    // Press Command+Shift+] for "Next Chat" ONCE
+    // ] = keycode 30
+    [self pressKey:30 withFlags:(kCGEventFlagMaskCommand | kCGEventFlagMaskShift) toProcess:waPid];
+    [NSThread sleepForTimeInterval:0.3];
+
+    // Get the new list of visible chats
+    NSArray<WAChat *> *newChats = [self getRecentChats];
+    [WALogger info:@"scrollChatListDown: now showing %ld chats", (long)newChats.count];
+
+    CFRelease(window);
+    return newChats;
+}
+
+- (NSArray<WAChat *> *)scrollChatListUp {
+    [WALogger info:@"scrollChatListUp"];
+
+    AXUIElementRef window = [self getMainWindow];
+    if (!window) {
+        [WALogger warn:@"scrollChatListUp: no main window"];
+        return @[];
+    }
+
+    // Clear search mode if active
+    if ([self isInSearchMode]) {
+        [WALogger debug:@"scrollChatListUp: clearing search mode"];
+        [self clearSearch];
+        [NSThread sleepForTimeInterval:0.3];
+    }
+
+    pid_t waPid = self.whatsappPID;
+    if (waPid == 0) {
+        [WALogger warn:@"scrollChatListUp: no WhatsApp PID"];
+        CFRelease(window);
+        return @[];
+    }
+
+    // Activate WhatsApp first to ensure it has focus
+    [self activateWhatsApp];
+    [NSThread sleepForTimeInterval:0.1];
+
+    // Get current chats
+    NSArray<WAChat *> *currentChats = [self getRecentChats];
+    if (currentChats.count == 0) {
+        [WALogger warn:@"scrollChatListUp: no chats visible"];
+        CFRelease(window);
+        return @[];
+    }
+
+    // Find the first visible chat and open it
+    WAChat *firstChat = [currentChats firstObject];
+    [WALogger debug:@"scrollChatListUp: opening first chat: %@", firstChat.name];
+
+    // Use openChat (AXPress) to open the chat
+    [self openChat:firstChat];
+    [NSThread sleepForTimeInterval:0.3];
+
+    // Press Command+Shift+[ for "Previous Chat" ONCE
+    // [ = keycode 33
+    [self pressKey:33 withFlags:(kCGEventFlagMaskCommand | kCGEventFlagMaskShift) toProcess:waPid];
+    [NSThread sleepForTimeInterval:0.3];
+
+    // Get the new list of visible chats
+    NSArray<WAChat *> *newChats = [self getRecentChats];
+    [WALogger info:@"scrollChatListUp: now showing %ld chats", (long)newChats.count];
+
+    CFRelease(window);
+    return newChats;
 }
 
 #pragma mark - Current Chat

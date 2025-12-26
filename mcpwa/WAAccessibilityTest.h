@@ -68,4 +68,12 @@
 /// Test listing chats with a specific filter
 + (void)testListChatsWithFilter:(NSString *)filterName;
 
+#pragma mark - Scroll Tests
+
+/// Test scrolling the chat list down by one page
++ (void)testScrollChatsDown;
+
+/// Test scrolling the chat list up by one page
++ (void)testScrollChatsUp;
+
 @end
