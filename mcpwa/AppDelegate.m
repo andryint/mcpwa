@@ -13,12 +13,14 @@
 #import "WAAccessibilityExplorer.h"
 #import "WAAccessibilityTest.h"
 #import "WALogger.h"
+#import "BotChatWindowController.h"
 
 @interface AppDelegate ()
 @property (nonatomic, strong) MCPServer *server;
 @property (nonatomic, assign) BOOL serverRunning;
 @property (nonatomic, assign) MCPTransportType transportType;
 @property (nonatomic, strong) NSString *customSocketPath;
+@property (nonatomic, strong) BotChatWindowController *botChatController;
 @end
 
 @implementation AppDelegate
@@ -734,6 +736,15 @@
     dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
         [WAAccessibilityTest testScrollChatsUp];
     });
+}
+
+#pragma mark - Bot Chat Actions
+
+- (IBAction)toggleBotChat:(id)sender {
+    if (!self.botChatController) {
+        self.botChatController = [BotChatWindowController sharedController];
+    }
+    [self.botChatController toggleWindow];
 }
 
 @end

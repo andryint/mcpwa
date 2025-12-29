@@ -83,6 +83,12 @@
                                 <modifierMask key="keyEquivalentModifierMask"/>
                                 <menu key="submenu" title="Window" systemMenu="window" id="Td7-aD-5lo">
                                     <items>
+                                        <menuItem title="Bot Chat" keyEquivalent="b" id="bot-cht-001" userLabel="Bot Chat">
+                                            <connections>
+                                                <action selector="toggleBotChat:" target="Voe-Tx-rLC" id="bot-cht-act"/>
+                                            </connections>
+                                        </menuItem>
+                                        <menuItem isSeparatorItem="YES" id="bot-cht-sep"/>
                                         <menuItem title="Minimize" keyEquivalent="m" id="OY7-WF-poV">
                                             <connections>
                                                 <action selector="performMiniaturize:" target="Ady-hI-5gd" id="VwT-WD-YPe"/>

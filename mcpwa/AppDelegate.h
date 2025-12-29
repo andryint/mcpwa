@@ -2,7 +2,11 @@
 #import "MCPServer.h"
 #import "MCPTransport.h"
 
+@class BotChatWindowController;
+
 @interface AppDelegate : NSObject <NSApplicationDelegate, MCPServerDelegate>
+
+@property (nonatomic, strong, readonly) BotChatWindowController *botChatController;
 
 
 @property (nonatomic, strong) NSWindow *window;
@@ -42,5 +46,12 @@
 - (IBAction)debugSetFilterFavorites:(id)sender;
 - (IBAction)debugSetFilterGroups:(id)sender;
 - (IBAction)debugListChatsWithFilter:(id)sender;
+
+#pragma mark - Scroll Debug Actions
+- (IBAction)debugScrollChatsDown:(id)sender;
+- (IBAction)debugScrollChatsUp:(id)sender;
+
+#pragma mark - Bot Chat
+- (IBAction)toggleBotChat:(id)sender;
 
 @end
