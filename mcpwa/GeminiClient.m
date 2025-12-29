@@ -10,6 +10,13 @@
 static NSString * const kGeminiAPIBaseURL = @"https://generativelanguage.googleapis.com/v1beta/models";
 static NSString * const kDefaultModel = @"gemini-2.0-flash-exp";
 
+// Model constants
+NSString * const kGeminiModel_2_0_Flash = @"gemini-2.0-flash-exp";
+NSString * const kGeminiModel_2_5_Flash = @"gemini-2.5-flash-preview-05-20";
+NSString * const kGeminiModel_2_5_Pro = @"gemini-2.5-pro-preview-05-06";
+NSString * const kGeminiModel_3_0_Flash = @"gemini-3-flash-preview";
+NSString * const kGeminiModel_3_0_Pro = @"gemini-3-pro-preview";
+
 #pragma mark - GeminiMessage
 
 @implementation GeminiMessage
@@ -28,11 +35,12 @@ static NSString * const kDefaultModel = @"gemini-2.0-flash-exp";
     return msg;
 }
 
-+ (instancetype)functionCall:(NSString *)name args:(NSDictionary *)args {
++ (instancetype)functionCall:(NSString *)name args:(NSDictionary *)args thoughtSignature:(NSString *)signature {
     GeminiMessage *msg = [[GeminiMessage alloc] init];
     msg.role = GeminiRoleModel;
     msg.functionName = name;
     msg.functionArgs = args;
+    msg.thoughtSignature = signature;
     return msg;
 }
 
@@ -110,6 +118,31 @@ static NSString * const kDefaultModel = @"gemini-2.0-flash-exp";
     }
 
     return nil;
+}
+
++ (NSArray<NSString *> *)availableModels {
+    return @[
+        kGeminiModel_3_0_Flash,
+        kGeminiModel_3_0_Pro,
+        kGeminiModel_2_5_Flash,
+        kGeminiModel_2_5_Pro,
+        kGeminiModel_2_0_Flash
+    ];
+}
+
++ (NSString *)displayNameForModel:(NSString *)modelId {
+    if ([modelId isEqualToString:kGeminiModel_3_0_Flash]) {
+        return @"Gemini 3.0 Flash";
+    } else if ([modelId isEqualToString:kGeminiModel_3_0_Pro]) {
+        return @"Gemini 3.0 Pro";
+    } else if ([modelId isEqualToString:kGeminiModel_2_5_Flash]) {
+        return @"Gemini 2.5 Flash";
+    } else if ([modelId isEqualToString:kGeminiModel_2_5_Pro]) {
+        return @"Gemini 2.5 Pro";
+    } else if ([modelId isEqualToString:kGeminiModel_2_0_Flash]) {
+        return @"Gemini 2.0 Flash";
+    }
+    return modelId;
 }
 
 - (void)configureMCPTools:(NSArray<NSDictionary *> *)tools {
@@ -202,13 +235,16 @@ static NSString * const kDefaultModel = @"gemini-2.0-flash-exp";
             case GeminiRoleModel:
                 content[@"role"] = @"model";
                 if (msg.functionName) {
-                    // Function call from model
-                    content[@"parts"] = @[@{
-                        @"functionCall": @{
-                            @"name": msg.functionName,
-                            @"args": msg.functionArgs ?: @{}
-                        }
-                    }];
+                    // Function call from model - include thoughtSignature for Gemini 3.0+
+                    NSMutableDictionary *functionCallPart = [NSMutableDictionary dictionary];
+                    functionCallPart[@"functionCall"] = @{
+                        @"name": msg.functionName,
+                        @"args": msg.functionArgs ?: @{}
+                    };
+                    if (msg.thoughtSignature) {
+                        functionCallPart[@"thoughtSignature"] = msg.thoughtSignature;
+                    }
+                    content[@"parts"] = @[functionCallPart];
                 } else {
                     content[@"parts"] = @[@{@"text": msg.text ?: @""}];
                 }
@@ -233,7 +269,7 @@ static NSString * const kDefaultModel = @"gemini-2.0-flash-exp";
 
     body[@"contents"] = contents;
 
-    // Add tools if function calling is enabled
+    // Add function calling tools (Google Search grounding cannot be combined with function calling)
     if (self.enableFunctionCalling && self.mcpToolDefinitions.count > 0) {
         body[@"tools"] = @[@{
             @"functionDeclarations": self.mcpToolDefinitions
@@ -334,10 +370,12 @@ static NSString * const kDefaultModel = @"gemini-2.0-flash-exp";
             GeminiFunctionCall *call = [[GeminiFunctionCall alloc] init];
             call.name = functionCall[@"name"];
             call.args = functionCall[@"args"] ?: @{};
+            // Extract thoughtSignature for Gemini 3.0+ (it's at the part level, not inside functionCall)
+            call.thoughtSignature = part[@"thoughtSignature"];
             [functionCalls addObject:call];
 
-            // Add to conversation history
-            [self.conversationHistory addObject:[GeminiMessage functionCall:call.name args:call.args]];
+            // Add to conversation history with thoughtSignature
+            [self.conversationHistory addObject:[GeminiMessage functionCall:call.name args:call.args thoughtSignature:call.thoughtSignature]];
         }
     }
 

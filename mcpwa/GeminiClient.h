@@ -23,10 +23,11 @@ typedef NS_ENUM(NSInteger, GeminiRole) {
 @property (nonatomic, copy, nullable) NSString *functionName;
 @property (nonatomic, copy, nullable) NSDictionary *functionArgs;
 @property (nonatomic, copy, nullable) NSString *functionResult;
+@property (nonatomic, copy, nullable) NSString *thoughtSignature; // Required for Gemini 3.0+
 
 + (instancetype)userMessage:(NSString *)text;
 + (instancetype)modelMessage:(NSString *)text;
-+ (instancetype)functionCall:(NSString *)name args:(NSDictionary *)args;
++ (instancetype)functionCall:(NSString *)name args:(NSDictionary *)args thoughtSignature:(nullable NSString *)signature;
 + (instancetype)functionResult:(NSString *)name result:(NSString *)result;
 @end
 
@@ -34,6 +35,7 @@ typedef NS_ENUM(NSInteger, GeminiRole) {
 @interface GeminiFunctionCall : NSObject
 @property (nonatomic, copy) NSString *name;
 @property (nonatomic, copy) NSDictionary *args;
+@property (nonatomic, copy, nullable) NSString *thoughtSignature; // Required for Gemini 3.0+
 @end
 
 // Chat response from Gemini
@@ -53,6 +55,13 @@ typedef NS_ENUM(NSInteger, GeminiRole) {
 - (void)geminiClient:(id)client didRequestFunctionCall:(GeminiFunctionCall *)call;
 @end
 
+// Available Gemini models
+extern NSString * const kGeminiModel_2_0_Flash;
+extern NSString * const kGeminiModel_2_5_Flash;
+extern NSString * const kGeminiModel_2_5_Pro;
+extern NSString * const kGeminiModel_3_0_Flash;
+extern NSString * const kGeminiModel_3_0_Pro;
+
 // Main Gemini client
 @interface GeminiClient : NSObject
 
@@ -67,6 +76,10 @@ typedef NS_ENUM(NSInteger, GeminiRole) {
 
 // Load API key from environment or config
 + (nullable NSString *)loadAPIKey;
+
+// Available models
++ (NSArray<NSString *> *)availableModels;
++ (NSString *)displayNameForModel:(NSString *)modelId;
 
 // Configure MCP tools as functions
 - (void)configureMCPTools:(NSArray<NSDictionary *> *)tools;

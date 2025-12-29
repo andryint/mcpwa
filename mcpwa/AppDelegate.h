@@ -54,4 +54,7 @@
 #pragma mark - Bot Chat
 - (IBAction)toggleBotChat:(id)sender;
 
+#pragma mark - Settings
+- (IBAction)showSettings:(id)sender;
+
 @end

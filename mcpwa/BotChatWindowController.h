@@ -27,6 +27,9 @@ NS_ASSUME_NONNULL_BEGIN
 /// Check if window is currently visible
 @property (nonatomic, readonly) BOOL isVisible;
 
+/// Show settings popover
+- (void)showSettings:(nullable id)sender;
+
 @end
 
 NS_ASSUME_NONNULL_END

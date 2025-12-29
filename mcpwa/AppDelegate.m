@@ -747,4 +747,19 @@
     [self.botChatController toggleWindow];
 }
 
+#pragma mark - Settings Actions
+
+- (IBAction)showSettings:(id)sender {
+    // Open bot chat window and show settings popover
+    if (!self.botChatController) {
+        self.botChatController = [BotChatWindowController sharedController];
+    }
+    [self.botChatController showWindow];
+
+    // Trigger settings popover after a short delay to ensure window is visible
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.1 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+        [self.botChatController showSettings:nil];
+    });
+}
+
 @end

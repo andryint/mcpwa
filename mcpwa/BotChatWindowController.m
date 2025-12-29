@@ -37,17 +37,24 @@ typedef NS_ENUM(NSInteger, ChatMessageType) {
 
 #pragma mark - BotChatWindowController
 
-@interface BotChatWindowController ()
+@interface BotChatWindowController () <NSPopoverDelegate>
 @property (nonatomic, strong) GeminiClient *geminiClient;
 @property (nonatomic, strong) NSMutableArray<ChatDisplayMessage *> *messages;
 @property (nonatomic, strong) NSScrollView *chatScrollView;
 @property (nonatomic, strong) NSStackView *chatStackView;
 @property (nonatomic, strong) NSTextField *inputField;
 @property (nonatomic, strong) NSButton *sendButton;
+@property (nonatomic, strong) NSButton *stopButton;
+@property (nonatomic, strong) NSButton *settingsButton;
 @property (nonatomic, strong) NSProgressIndicator *loadingIndicator;
 @property (nonatomic, strong) NSTextField *statusLabel;
 @property (nonatomic, assign) BOOL isProcessing;
+@property (nonatomic, assign) BOOL isCancelled;
 @property (nonatomic, strong) NSArray<NSDictionary *> *mcpTools;
+@property (nonatomic, assign) BOOL showDebugInfo;
+@property (nonatomic, strong) NSPopover *settingsPopover;
+@property (nonatomic, strong) NSPopUpButton *modelSelector;
+@property (nonatomic, strong) NSButton *debugToggle;
 @end
 
 @implementation BotChatWindowController
@@ -65,6 +72,7 @@ typedef NS_ENUM(NSInteger, ChatMessageType) {
     self = [super init];
     if (self) {
         _messages = [NSMutableArray array];
+        _showDebugInfo = [[NSUserDefaults standardUserDefaults] boolForKey:@"GeminiShowDebugInfo"];
         [self setupWindow];
         [self setupGeminiClient];
         [self loadMCPTools];
@@ -147,19 +155,52 @@ typedef NS_ENUM(NSInteger, ChatMessageType) {
     self.inputField.focusRingType = NSFocusRingTypeNone;
     [inputContainer addSubview:self.inputField];
 
-    // Send button
-    self.sendButton = [NSButton buttonWithTitle:@"Send" target:self action:@selector(sendMessage:)];
+    // Send button (arrow up icon)
+    NSImage *sendImage = [NSImage imageWithSystemSymbolName:@"arrow.up" accessibilityDescription:@"Send"];
+    NSImageSymbolConfiguration *config = [NSImageSymbolConfiguration configurationWithPointSize:14 weight:NSFontWeightBold];
+    sendImage = [sendImage imageWithSymbolConfiguration:config];
+    self.sendButton = [NSButton buttonWithImage:sendImage target:self action:@selector(sendMessage:)];
     self.sendButton.translatesAutoresizingMaskIntoConstraints = NO;
-    self.sendButton.bezelStyle = NSBezelStyleRounded;
+    self.sendButton.bezelStyle = NSBezelStyleCircular;
+    self.sendButton.bordered = NO;
     self.sendButton.keyEquivalent = @"\r"; // Enter key
+    self.sendButton.wantsLayer = YES;
+    self.sendButton.layer.backgroundColor = [NSColor colorWithRed:0.0 green:0.4 blue:0.8 alpha:1.0].CGColor;
+    self.sendButton.layer.cornerRadius = 14;
+    self.sendButton.contentTintColor = [NSColor whiteColor];
     [inputContainer addSubview:self.sendButton];
+
+    // Stop button (stop icon - hidden by default, shown during processing)
+    NSImage *stopImage = [NSImage imageWithSystemSymbolName:@"stop.fill" accessibilityDescription:@"Stop"];
+    stopImage = [stopImage imageWithSymbolConfiguration:config];
+    self.stopButton = [NSButton buttonWithImage:stopImage target:self action:@selector(stopProcessing:)];
+    self.stopButton.translatesAutoresizingMaskIntoConstraints = NO;
+    self.stopButton.bezelStyle = NSBezelStyleCircular;
+    self.stopButton.bordered = NO;
+    self.stopButton.hidden = YES;
+    self.stopButton.wantsLayer = YES;
+    self.stopButton.layer.backgroundColor = [NSColor colorWithRed:0.0 green:0.4 blue:0.8 alpha:1.0].CGColor;
+    self.stopButton.layer.cornerRadius = 14;
+    self.stopButton.contentTintColor = [NSColor whiteColor];
+    [inputContainer addSubview:self.stopButton];
+
+    // Settings button (gear icon)
+    self.settingsButton = [NSButton buttonWithImage:[NSImage imageWithSystemSymbolName:@"gearshape" accessibilityDescription:@"Settings"]
+                                             target:self
+                                             action:@selector(showSettings:)];
+    self.settingsButton.translatesAutoresizingMaskIntoConstraints = NO;
+    self.settingsButton.bezelStyle = NSBezelStyleRounded;
+    self.settingsButton.bordered = NO;
+    self.settingsButton.contentTintColor = [NSColor colorWithWhite:0.6 alpha:1.0];
+    [inputContainer addSubview:self.settingsButton];
 
     // Loading indicator
     self.loadingIndicator = [[NSProgressIndicator alloc] initWithFrame:NSZeroRect];
     self.loadingIndicator.translatesAutoresizingMaskIntoConstraints = NO;
     self.loadingIndicator.style = NSProgressIndicatorStyleSpinning;
-    self.loadingIndicator.controlSize = NSControlSizeSmall;
-    self.loadingIndicator.hidden = YES;
+    self.loadingIndicator.controlSize = NSControlSizeRegular;
+    self.loadingIndicator.displayedWhenStopped = NO;
+    self.loadingIndicator.appearance = [NSAppearance appearanceNamed:NSAppearanceNameVibrantLight];
     [inputContainer addSubview:self.loadingIndicator];
 
     // Status label
@@ -180,6 +221,8 @@ typedef NS_ENUM(NSInteger, ChatMessageType) {
         @"input": inputContainer,
         @"field": self.inputField,
         @"send": self.sendButton,
+        @"stop": self.stopButton,
+        @"settings": self.settingsButton,
         @"loading": self.loadingIndicator,
         @"status": self.statusLabel,
         @"stack": self.chatStackView,
@@ -199,9 +242,23 @@ typedef NS_ENUM(NSInteger, ChatMessageType) {
 
     // Input container layout
     [NSLayoutConstraint activateConstraints:
-     [NSLayoutConstraint constraintsWithVisualFormat:@"H:|-10-[field]-8-[loading(16)]-8-[send]-10-|"
+     [NSLayoutConstraint constraintsWithVisualFormat:@"H:|-10-[field]-8-[loading(20)]-8-[send(28)]-8-[settings(24)]-10-|"
                                              options:NSLayoutFormatAlignAllCenterY
                                              metrics:nil views:views]];
+    // Send and stop button size (circular)
+    [NSLayoutConstraint activateConstraints:@[
+        [self.sendButton.heightAnchor constraintEqualToConstant:28],
+        [self.stopButton.widthAnchor constraintEqualToConstant:28],
+        [self.stopButton.heightAnchor constraintEqualToConstant:28]
+    ]];
+    // Stop button overlays the send button position
+    [NSLayoutConstraint activateConstraints:@[
+        [self.stopButton.centerXAnchor constraintEqualToAnchor:self.sendButton.centerXAnchor],
+        [self.stopButton.centerYAnchor constraintEqualToAnchor:self.sendButton.centerYAnchor]
+    ]];
+    [NSLayoutConstraint activateConstraints:@[
+        [self.settingsButton.heightAnchor constraintEqualToConstant:24]
+    ]];
     [NSLayoutConstraint activateConstraints:
      [NSLayoutConstraint constraintsWithVisualFormat:@"H:|-10-[status]-10-|"
                                              options:0 metrics:nil views:views]];
@@ -209,7 +266,8 @@ typedef NS_ENUM(NSInteger, ChatMessageType) {
      [NSLayoutConstraint constraintsWithVisualFormat:@"V:|-10-[field(28)]-4-[status]-10-|"
                                              options:0 metrics:nil views:views]];
     [NSLayoutConstraint activateConstraints:@[
-        [self.loadingIndicator.heightAnchor constraintEqualToConstant:16]
+        [self.loadingIndicator.heightAnchor constraintEqualToConstant:20],
+        [self.loadingIndicator.widthAnchor constraintEqualToConstant:20]
     ]];
 
     // Document view constraints
@@ -229,8 +287,11 @@ typedef NS_ENUM(NSInteger, ChatMessageType) {
     ]];
 
     // Add welcome message
-    [self addSystemMessage:@"Welcome! I'm your WhatsApp assistant powered by Gemini. "
-                           "I can help you read messages, search chats, and send messages through WhatsApp."];
+    [self addSystemMessage:@"Welcome! I'm your assistant powered by Gemini. I can:\n"
+                           "- Read and send WhatsApp messages\n"
+                           "- Search the web (Google Search grounding)\n"
+                           "- Run shell commands on your Mac\n"
+                           "Just ask me anything!"];
 }
 
 - (void)setupGeminiClient {
@@ -247,7 +308,14 @@ typedef NS_ENUM(NSInteger, ChatMessageType) {
     self.geminiClient = [[GeminiClient alloc] initWithAPIKey:apiKey];
     self.geminiClient.delegate = self;
 
-    [self updateStatus:@"Ready"];
+    // Load saved model preference
+    NSString *savedModel = [[NSUserDefaults standardUserDefaults] stringForKey:@"GeminiSelectedModel"];
+    if (savedModel.length > 0) {
+        self.geminiClient.model = savedModel;
+    }
+
+    NSString *displayName = [GeminiClient displayNameForModel:self.geminiClient.model];
+    [self updateStatus:[NSString stringWithFormat:@"Ready (%@)", displayName]];
 }
 
 - (void)loadMCPTools {
@@ -359,6 +427,21 @@ typedef NS_ENUM(NSInteger, ChatMessageType) {
                 },
                 @"required": @[@"query"]
             }
+        },
+        // === Local Tools (Gemini can search web and fetch URLs natively) ===
+        @{
+            @"name": @"run_shell_command",
+            @"description": @"Execute a shell command on the local Mac and return the output. Use for file operations, system info, running scripts, etc. Examples: 'ls -la', 'cat file.txt', 'date', 'pwd'.",
+            @"inputSchema": @{
+                @"type": @"object",
+                @"properties": @{
+                    @"command": @{
+                        @"type": @"string",
+                        @"description": @"The shell command to execute"
+                    }
+                },
+                @"required": @[@"command"]
+            }
         }
     ];
 
@@ -386,6 +469,111 @@ typedef NS_ENUM(NSInteger, ChatMessageType) {
 
 - (BOOL)isVisible {
     return self.window.isVisible;
+}
+
+#pragma mark - Settings
+
+- (void)showSettings:(id)sender {
+    if (self.settingsPopover.isShown) {
+        [self.settingsPopover close];
+        return;
+    }
+
+    // Create popover if needed
+    if (!self.settingsPopover) {
+        self.settingsPopover = [[NSPopover alloc] init];
+        self.settingsPopover.behavior = NSPopoverBehaviorTransient;
+        self.settingsPopover.delegate = self;
+    }
+
+    // Create settings view
+    NSView *settingsView = [[NSView alloc] initWithFrame:NSMakeRect(0, 0, 250, 100)];
+
+    // Model selection label
+    NSTextField *modelLabel = [NSTextField labelWithString:@"Model:"];
+    modelLabel.translatesAutoresizingMaskIntoConstraints = NO;
+    modelLabel.font = [NSFont systemFontOfSize:12];
+    [settingsView addSubview:modelLabel];
+
+    // Model popup button
+    self.modelSelector = [[NSPopUpButton alloc] initWithFrame:NSZeroRect pullsDown:NO];
+    self.modelSelector.translatesAutoresizingMaskIntoConstraints = NO;
+    self.modelSelector.target = self;
+    self.modelSelector.action = @selector(modelChanged:);
+
+    // Populate models
+    [self.modelSelector removeAllItems];
+    for (NSString *modelId in [GeminiClient availableModels]) {
+        NSString *displayName = [GeminiClient displayNameForModel:modelId];
+        [self.modelSelector addItemWithTitle:displayName];
+        self.modelSelector.lastItem.representedObject = modelId;
+
+        // Select current model
+        if ([modelId isEqualToString:self.geminiClient.model]) {
+            [self.modelSelector selectItem:self.modelSelector.lastItem];
+        }
+    }
+    [settingsView addSubview:self.modelSelector];
+
+    // Debug toggle label
+    NSTextField *debugLabel = [NSTextField labelWithString:@"Show debug info:"];
+    debugLabel.translatesAutoresizingMaskIntoConstraints = NO;
+    debugLabel.font = [NSFont systemFontOfSize:12];
+    [settingsView addSubview:debugLabel];
+
+    // Debug toggle switch
+    self.debugToggle = [NSButton checkboxWithTitle:@"" target:self action:@selector(debugToggled:)];
+    self.debugToggle.translatesAutoresizingMaskIntoConstraints = NO;
+    self.debugToggle.state = self.showDebugInfo ? NSControlStateValueOn : NSControlStateValueOff;
+    [settingsView addSubview:self.debugToggle];
+
+    // Layout
+    [NSLayoutConstraint activateConstraints:@[
+        [modelLabel.leadingAnchor constraintEqualToAnchor:settingsView.leadingAnchor constant:15],
+        [modelLabel.topAnchor constraintEqualToAnchor:settingsView.topAnchor constant:15],
+
+        [self.modelSelector.leadingAnchor constraintEqualToAnchor:modelLabel.trailingAnchor constant:10],
+        [self.modelSelector.trailingAnchor constraintEqualToAnchor:settingsView.trailingAnchor constant:-15],
+        [self.modelSelector.centerYAnchor constraintEqualToAnchor:modelLabel.centerYAnchor],
+
+        [debugLabel.leadingAnchor constraintEqualToAnchor:settingsView.leadingAnchor constant:15],
+        [debugLabel.topAnchor constraintEqualToAnchor:modelLabel.bottomAnchor constant:20],
+
+        [self.debugToggle.leadingAnchor constraintEqualToAnchor:debugLabel.trailingAnchor constant:10],
+        [self.debugToggle.centerYAnchor constraintEqualToAnchor:debugLabel.centerYAnchor]
+    ]];
+
+    // Create view controller for popover
+    NSViewController *vc = [[NSViewController alloc] init];
+    vc.view = settingsView;
+    self.settingsPopover.contentViewController = vc;
+
+    // Show popover
+    [self.settingsPopover showRelativeToRect:self.settingsButton.bounds
+                                      ofView:self.settingsButton
+                               preferredEdge:NSRectEdgeMaxY];
+}
+
+- (void)modelChanged:(NSPopUpButton *)sender {
+    NSString *selectedModelId = sender.selectedItem.representedObject;
+    if (selectedModelId) {
+        self.geminiClient.model = selectedModelId;
+        [[NSUserDefaults standardUserDefaults] setObject:selectedModelId forKey:@"GeminiSelectedModel"];
+
+        NSString *displayName = [GeminiClient displayNameForModel:selectedModelId];
+        [self updateStatus:[NSString stringWithFormat:@"Model: %@", displayName]];
+
+        // Add system message about model change
+        [self addSystemMessage:[NSString stringWithFormat:@"Switched to %@", displayName]];
+    }
+}
+
+- (void)debugToggled:(NSButton *)sender {
+    self.showDebugInfo = (sender.state == NSControlStateValueOn);
+    [[NSUserDefaults standardUserDefaults] setBool:self.showDebugInfo forKey:@"GeminiShowDebugInfo"];
+
+    NSString *status = self.showDebugInfo ? @"Debug info enabled" : @"Debug info disabled";
+    [self updateStatus:status];
 }
 
 #pragma mark - Message Display
@@ -515,11 +703,14 @@ typedef NS_ENUM(NSInteger, ChatMessageType) {
 
     [NSLayoutConstraint activateConstraints:@[
         [bubble.topAnchor constraintEqualToAnchor:bubbleContainer.topAnchor],
-        [bubble.bottomAnchor constraintEqualToAnchor:bubbleContainer.bottomAnchor],
-        [bubbleContainer.widthAnchor constraintEqualToAnchor:self.chatStackView.widthAnchor constant:-20]
+        [bubble.bottomAnchor constraintEqualToAnchor:bubbleContainer.bottomAnchor]
     ]];
 
+    // Add to stack view first, then set width constraint (views must be in same hierarchy)
     [self.chatStackView addArrangedSubview:bubbleContainer];
+
+    // Now that bubbleContainer is in the hierarchy, we can constrain to stack view width
+    [bubbleContainer.widthAnchor constraintEqualToAnchor:self.chatStackView.widthAnchor constant:-20].active = YES;
 
     // Scroll to bottom
     dispatch_async(dispatch_get_main_queue(), ^{
@@ -535,8 +726,10 @@ typedef NS_ENUM(NSInteger, ChatMessageType) {
 - (void)setProcessing:(BOOL)processing {
     self.isProcessing = processing;
     self.inputField.enabled = !processing;
-    self.sendButton.enabled = !processing;
-    self.loadingIndicator.hidden = !processing;
+
+    // Toggle between send and stop buttons
+    self.sendButton.hidden = processing;
+    self.stopButton.hidden = !processing;
 
     if (processing) {
         [self.loadingIndicator startAnimation:nil];
@@ -551,6 +744,7 @@ typedef NS_ENUM(NSInteger, ChatMessageType) {
     NSString *text = self.inputField.stringValue;
     if (text.length == 0 || self.isProcessing) return;
 
+    self.isCancelled = NO;
     self.inputField.stringValue = @"";
     [self addUserMessage:text];
     [self setProcessing:YES];
@@ -559,12 +753,40 @@ typedef NS_ENUM(NSInteger, ChatMessageType) {
     [self.geminiClient sendMessage:text];
 }
 
+- (void)stopProcessing:(id)sender {
+    // Set cancellation flag first
+    self.isCancelled = YES;
+
+    // Cancel the current Gemini request
+    [self.geminiClient cancelRequest];
+
+    // Clear conversation history to prevent stale function call chains
+    [self.geminiClient clearHistory];
+
+    // Reset processing state
+    [self setProcessing:NO];
+    [self updateStatus:@"Stopped"];
+
+    // Add a system message indicating the request was cancelled
+    [self addSystemMessage:@"Request cancelled."];
+}
+
 #pragma mark - MCP Tool Execution
 
 - (void)executeMCPTool:(NSString *)name args:(NSDictionary *)args completion:(void(^)(NSString *result))completion {
+    // Check if already cancelled before starting
+    if (self.isCancelled) {
+        return;
+    }
+
     WAAccessibility *wa = [WAAccessibility shared];
 
     dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
+        // Check cancellation at start of background task
+        if (self.isCancelled) {
+            return;
+        }
+
         NSString *result = nil;
 
         @try {
@@ -595,6 +817,10 @@ typedef NS_ENUM(NSInteger, ChatMessageType) {
             else if ([name isEqualToString:@"whatsapp_search"]) {
                 result = [self executeSearch:wa query:args[@"query"]];
             }
+            // Local tools (Gemini handles web search/fetch natively)
+            else if ([name isEqualToString:@"run_shell_command"]) {
+                result = [self executeShellCommand:args[@"command"]];
+            }
             else {
                 result = [NSString stringWithFormat:@"Unknown tool: %@", name];
             }
@@ -602,8 +828,11 @@ typedef NS_ENUM(NSInteger, ChatMessageType) {
             result = [NSString stringWithFormat:@"Error: %@", exception.reason];
         }
 
+        // Only call completion if not cancelled
         dispatch_async(dispatch_get_main_queue(), ^{
-            completion(result);
+            if (!self.isCancelled) {
+                completion(result);
+            }
         });
     });
 }
@@ -762,6 +991,66 @@ typedef NS_ENUM(NSInteger, ChatMessageType) {
     return result;
 }
 
+#pragma mark - Local Tool Implementations
+
+- (NSString *)executeShellCommand:(NSString *)command {
+    if (!command) return @"Command is required";
+
+    // Basic safety check - block dangerous commands
+    NSArray *blockedPatterns = @[@"rm ", @"rm\t", @"rmdir", @"sudo", @"chmod", @"chown",
+                                  @"mkfs", @"dd ", @"format", @"> /", @">> /",
+                                  @"curl.*|.*sh", @"wget.*|.*sh", @"mv /", @"cp.*/ "];
+    NSString *lowerCmd = command.lowercaseString;
+    for (NSString *pattern in blockedPatterns) {
+        if ([lowerCmd containsString:pattern]) {
+            return [NSString stringWithFormat:@"Command blocked for safety: contains '%@'", pattern];
+        }
+    }
+
+    NSTask *task = [[NSTask alloc] init];
+    task.launchPath = @"/bin/zsh";
+    task.arguments = @[@"-c", command];
+
+    NSPipe *outputPipe = [NSPipe pipe];
+    NSPipe *errorPipe = [NSPipe pipe];
+    task.standardOutput = outputPipe;
+    task.standardError = errorPipe;
+
+    @try {
+        [task launch];
+        [task waitUntilExit];
+
+        NSData *outputData = [[outputPipe fileHandleForReading] readDataToEndOfFile];
+        NSData *errorData = [[errorPipe fileHandleForReading] readDataToEndOfFile];
+
+        NSString *output = [[NSString alloc] initWithData:outputData encoding:NSUTF8StringEncoding];
+        NSString *errorOutput = [[NSString alloc] initWithData:errorData encoding:NSUTF8StringEncoding];
+
+        NSMutableString *result = [NSMutableString string];
+
+        if (output.length > 0) {
+            [result appendString:output];
+        }
+        if (errorOutput.length > 0) {
+            if (result.length > 0) [result appendString:@"\n"];
+            [result appendFormat:@"stderr: %@", errorOutput];
+        }
+
+        if (result.length == 0) {
+            result = [NSMutableString stringWithFormat:@"Command completed with exit code %d", task.terminationStatus];
+        }
+
+        // Truncate if too long
+        if (result.length > 5000) {
+            return [NSString stringWithFormat:@"%@\n\n[Output truncated...]", [result substringToIndex:5000]];
+        }
+
+        return result;
+    } @catch (NSException *exception) {
+        return [NSString stringWithFormat:@"Failed to execute command: %@", exception.reason];
+    }
+}
+
 #pragma mark - GeminiClientDelegate
 
 - (void)geminiClient:(GeminiClient *)client didCompleteSendWithResponse:(GeminiChatResponse *)response {
@@ -772,17 +1061,22 @@ typedef NS_ENUM(NSInteger, ChatMessageType) {
         return;
     }
 
-    // If there's a text response, show it
-    if (response.text && !response.hasFunctionCalls) {
-        [self addBotMessage:response.text];
-        [self setProcessing:NO];
-        [self updateStatus:@"Ready"];
+    // Handle function calls first - they take priority
+    if (response.hasFunctionCalls) {
+        // Show text alongside function calls if present
+        if (response.text) {
+            [self addBotMessage:response.text];
+        }
+        [self handleFunctionCalls:response.functionCalls];
+        return;
     }
 
-    // Handle function calls
-    if (response.hasFunctionCalls) {
-        [self handleFunctionCalls:response.functionCalls];
+    // No function calls - show text response and finish
+    if (response.text) {
+        [self addBotMessage:response.text];
     }
+    [self setProcessing:NO];
+    [self updateStatus:@"Ready"];
 }
 
 - (void)geminiClient:(GeminiClient *)client didFailWithError:(NSError *)error {
@@ -807,8 +1101,10 @@ typedef NS_ENUM(NSInteger, ChatMessageType) {
     [self updateStatus:[NSString stringWithFormat:@"Calling %@...", call.name]];
 
     [self executeMCPTool:call.name args:call.args completion:^(NSString *result) {
-        // Show function result in chat
-        [self addFunctionMessage:call.name result:result];
+        // Show function result in chat only if debug mode is enabled
+        if (self.showDebugInfo) {
+            [self addFunctionMessage:call.name result:result];
+        }
 
         // Send result back to Gemini
         [self.geminiClient sendFunctionResult:call.name result:result];
