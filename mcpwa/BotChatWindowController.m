@@ -208,7 +208,7 @@ typedef NS_ENUM(NSInteger, ChatMessageType) {
     self.statusLabel.translatesAutoresizingMaskIntoConstraints = NO;
     self.statusLabel.stringValue = @"";
     self.statusLabel.font = [NSFont systemFontOfSize:11];
-    self.statusLabel.textColor = [NSColor secondaryLabelColor];
+    self.statusLabel.textColor = [NSColor colorWithWhite:0.6 alpha:1.0];
     self.statusLabel.bezeled = NO;
     self.statusLabel.editable = NO;
     self.statusLabel.selectable = NO;
@@ -619,6 +619,142 @@ typedef NS_ENUM(NSInteger, ChatMessageType) {
     [self addMessageBubble:msg];
 }
 
+- (NSAttributedString *)attributedStringFromMarkdown:(NSString *)markdown textColor:(NSColor *)textColor {
+    NSMutableAttributedString *result = [[NSMutableAttributedString alloc] init];
+
+    NSFont *regularFont = [NSFont systemFontOfSize:13];
+    NSFont *boldFont = [NSFont boldSystemFontOfSize:13];
+    NSFont *italicFont = [NSFont fontWithDescriptor:[[regularFont fontDescriptor] fontDescriptorWithSymbolicTraits:NSFontDescriptorTraitItalic] size:13];
+    if (!italicFont) italicFont = regularFont;
+    NSFont *h3Font = [NSFont boldSystemFontOfSize:15];
+    NSFont *h2Font = [NSFont boldSystemFontOfSize:17];
+    NSFont *h1Font = [NSFont boldSystemFontOfSize:19];
+
+    NSDictionary *defaultAttrs = @{
+        NSFontAttributeName: regularFont,
+        NSForegroundColorAttributeName: textColor
+    };
+
+    NSArray *lines = [markdown componentsSeparatedByString:@"\n"];
+
+    for (NSUInteger lineIdx = 0; lineIdx < lines.count; lineIdx++) {
+        NSString *line = lines[lineIdx];
+
+        // Handle headers
+        NSFont *lineFont = regularFont;
+        if ([line hasPrefix:@"### "]) {
+            line = [line substringFromIndex:4];
+            lineFont = h3Font;
+        } else if ([line hasPrefix:@"## "]) {
+            line = [line substringFromIndex:3];
+            lineFont = h2Font;
+        } else if ([line hasPrefix:@"# "]) {
+            line = [line substringFromIndex:2];
+            lineFont = h1Font;
+        }
+
+        // Handle bullet points
+        if ([line hasPrefix:@"* "] || [line hasPrefix:@"- "]) {
+            line = [NSString stringWithFormat:@"• %@", [line substringFromIndex:2]];
+        }
+
+        // Parse inline formatting character by character
+        NSMutableAttributedString *lineAttr = [[NSMutableAttributedString alloc] init];
+        NSUInteger i = 0;
+        NSUInteger len = line.length;
+
+        while (i < len) {
+            unichar c = [line characterAtIndex:i];
+
+            // Check for bold (**) or italic (*)
+            if (c == '*') {
+                // Check for bold **
+                if (i + 1 < len && [line characterAtIndex:i + 1] == '*') {
+                    // Look for closing **
+                    NSUInteger start = i + 2;
+                    NSUInteger end = start;
+                    BOOL foundClosing = NO;
+                    while (end + 1 < len) {
+                        if ([line characterAtIndex:end] == '*' && [line characterAtIndex:end + 1] == '*') {
+                            foundClosing = YES;
+                            break;
+                        }
+                        end++;
+                    }
+                    if (foundClosing && end > start) {
+                        // Found closing **
+                        NSString *boldText = [line substringWithRange:NSMakeRange(start, end - start)];
+                        NSFont *font = (lineFont == regularFont) ? boldFont : [NSFont boldSystemFontOfSize:lineFont.pointSize];
+                        NSAttributedString *boldAttr = [[NSAttributedString alloc] initWithString:boldText attributes:@{
+                            NSFontAttributeName: font,
+                            NSForegroundColorAttributeName: textColor
+                        }];
+                        [lineAttr appendAttributedString:boldAttr];
+                        i = end + 2;
+                        continue;
+                    }
+                    // No closing ** found - treat as literal text and advance past both *
+                    NSAttributedString *literalAttr = [[NSAttributedString alloc] initWithString:@"**" attributes:@{
+                        NSFontAttributeName: lineFont,
+                        NSForegroundColorAttributeName: textColor
+                    }];
+                    [lineAttr appendAttributedString:literalAttr];
+                    i += 2;
+                    continue;
+                }
+
+                // Check for single italic *
+                NSUInteger start = i + 1;
+                NSUInteger end = start;
+                while (end < len && [line characterAtIndex:end] != '*') {
+                    end++;
+                }
+                if (end < len && end > start) {
+                    // Found closing *
+                    NSString *italicText = [line substringWithRange:NSMakeRange(start, end - start)];
+                    NSAttributedString *italicAttr = [[NSAttributedString alloc] initWithString:italicText attributes:@{
+                        NSFontAttributeName: italicFont,
+                        NSForegroundColorAttributeName: textColor
+                    }];
+                    [lineAttr appendAttributedString:italicAttr];
+                    i = end + 1;
+                    continue;
+                }
+
+                // No closing * found - treat as literal *
+                NSAttributedString *literalAttr = [[NSAttributedString alloc] initWithString:@"*" attributes:@{
+                    NSFontAttributeName: lineFont,
+                    NSForegroundColorAttributeName: textColor
+                }];
+                [lineAttr appendAttributedString:literalAttr];
+                i++;
+                continue;
+            }
+
+            // Regular character - collect consecutive regular chars for efficiency
+            NSUInteger start = i;
+            while (i < len && [line characterAtIndex:i] != '*') {
+                i++;
+            }
+            NSString *regularText = [line substringWithRange:NSMakeRange(start, i - start)];
+            NSAttributedString *regularAttr = [[NSAttributedString alloc] initWithString:regularText attributes:@{
+                NSFontAttributeName: lineFont,
+                NSForegroundColorAttributeName: textColor
+            }];
+            [lineAttr appendAttributedString:regularAttr];
+        }
+
+        [result appendAttributedString:lineAttr];
+
+        // Add newline between lines (except last)
+        if (lineIdx < lines.count - 1) {
+            [result appendAttributedString:[[NSAttributedString alloc] initWithString:@"\n" attributes:defaultAttrs]];
+        }
+    }
+
+    return result;
+}
+
 - (void)addMessageBubble:(ChatDisplayMessage *)message {
     NSView *bubbleContainer = [[NSView alloc] initWithFrame:NSZeroRect];
     bubbleContainer.translatesAutoresizingMaskIntoConstraints = NO;
@@ -629,23 +765,12 @@ typedef NS_ENUM(NSInteger, ChatMessageType) {
     bubble.wantsLayer = YES;
     bubble.layer.cornerRadius = 12;
 
-    // Create text field
-    NSTextField *textField = [[NSTextField alloc] initWithFrame:NSZeroRect];
-    textField.translatesAutoresizingMaskIntoConstraints = NO;
-    textField.stringValue = message.text;
-    textField.font = [NSFont systemFontOfSize:13];
-    textField.bezeled = NO;
-    textField.editable = NO;
-    textField.selectable = YES;
-    textField.backgroundColor = [NSColor clearColor];
-    textField.lineBreakMode = NSLineBreakByWordWrapping;
-    textField.maximumNumberOfLines = 0;
-    textField.preferredMaxLayoutWidth = 350;
-
     // Style based on message type
     NSColor *bubbleColor;
     NSColor *textColor = [NSColor whiteColor];
     BOOL alignRight = NO;
+    BOOL useMarkdown = NO;
+    NSString *displayText = message.text;
 
     switch (message.type) {
         case ChatMessageTypeUser:
@@ -654,12 +779,12 @@ typedef NS_ENUM(NSInteger, ChatMessageType) {
             break;
         case ChatMessageTypeBot:
             bubbleColor = kBotBubbleColor;
+            useMarkdown = YES;
             break;
         case ChatMessageTypeFunction:
             bubbleColor = kFunctionBubbleColor;
-            textField.font = [NSFont monospacedSystemFontOfSize:11 weight:NSFontWeightRegular];
             if (message.functionName) {
-                textField.stringValue = [NSString stringWithFormat:@"[%@]\n%@", message.functionName, message.text];
+                displayText = [NSString stringWithFormat:@"[%@]\n%@", message.functionName, message.text];
             }
             break;
         case ChatMessageTypeError:
@@ -671,8 +796,28 @@ typedef NS_ENUM(NSInteger, ChatMessageType) {
             break;
     }
 
+    // Create text field
+    NSTextField *textField = [[NSTextField alloc] initWithFrame:NSZeroRect];
+    textField.translatesAutoresizingMaskIntoConstraints = NO;
+    textField.bezeled = NO;
+    textField.editable = NO;
+    textField.selectable = YES;
+    textField.backgroundColor = [NSColor clearColor];
+    textField.lineBreakMode = NSLineBreakByWordWrapping;
+    textField.maximumNumberOfLines = 0;
+    textField.preferredMaxLayoutWidth = 350;
+
+    if (useMarkdown) {
+        textField.attributedStringValue = [self attributedStringFromMarkdown:displayText textColor:textColor];
+    } else {
+        textField.stringValue = displayText;
+        textField.font = (message.type == ChatMessageTypeFunction) ?
+            [NSFont monospacedSystemFontOfSize:11 weight:NSFontWeightRegular] :
+            [NSFont systemFontOfSize:13];
+        textField.textColor = textColor;
+    }
+
     bubble.layer.backgroundColor = bubbleColor.CGColor;
-    textField.textColor = textColor;
 
     [bubble addSubview:textField];
     [bubbleContainer addSubview:bubble];
@@ -781,13 +926,18 @@ typedef NS_ENUM(NSInteger, ChatMessageType) {
 
     WAAccessibility *wa = [WAAccessibility shared];
 
+    // Log tool execution start
+    NSLog(@"[MCP] Starting tool: %@", name);
+
     dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
         // Check cancellation at start of background task
         if (self.isCancelled) {
+            NSLog(@"[MCP] Tool %@ cancelled before execution", name);
             return;
         }
 
         NSString *result = nil;
+        NSDate *startTime = [NSDate date];
 
         @try {
             if ([name isEqualToString:@"whatsapp_start_session"]) {
@@ -826,12 +976,20 @@ typedef NS_ENUM(NSInteger, ChatMessageType) {
             }
         } @catch (NSException *exception) {
             result = [NSString stringWithFormat:@"Error: %@", exception.reason];
+            NSLog(@"[MCP] Tool %@ exception: %@", name, exception.reason);
         }
+
+        NSTimeInterval elapsed = [[NSDate date] timeIntervalSinceDate:startTime];
+        NSLog(@"[MCP] Tool %@ completed in %.2fs, result length: %lu", name, elapsed, (unsigned long)result.length);
 
         // Only call completion if not cancelled
         dispatch_async(dispatch_get_main_queue(), ^{
             if (!self.isCancelled) {
+                NSLog(@"[MCP] Calling completion for %@", name);
                 completion(result);
+                NSLog(@"[MCP] Completion called for %@", name);
+            } else {
+                NSLog(@"[MCP] Tool %@ cancelled, skipping completion", name);
             }
         });
     });
@@ -1054,6 +1212,11 @@ typedef NS_ENUM(NSInteger, ChatMessageType) {
 #pragma mark - GeminiClientDelegate
 
 - (void)geminiClient:(GeminiClient *)client didCompleteSendWithResponse:(GeminiChatResponse *)response {
+    NSLog(@"[Gemini] didCompleteSendWithResponse - error: %@, text: %@, functionCalls: %lu",
+          response.error ?: @"none",
+          response.text ? @"yes" : @"no",
+          (unsigned long)response.functionCalls.count);
+
     if (response.error) {
         [self addErrorMessage:response.error];
         [self setProcessing:NO];
@@ -1063,6 +1226,7 @@ typedef NS_ENUM(NSInteger, ChatMessageType) {
 
     // Handle function calls first - they take priority
     if (response.hasFunctionCalls) {
+        NSLog(@"[Gemini] Processing %lu function calls", (unsigned long)response.functionCalls.count);
         // Show text alongside function calls if present
         if (response.text) {
             [self addBotMessage:response.text];
@@ -1094,13 +1258,17 @@ typedef NS_ENUM(NSInteger, ChatMessageType) {
 
 - (void)processFunctionCallAtIndex:(NSUInteger)index calls:(NSArray<GeminiFunctionCall *> *)calls {
     if (index >= calls.count) {
+        NSLog(@"[Gemini] All function calls processed");
         return;
     }
 
     GeminiFunctionCall *call = calls[index];
+    NSLog(@"[Gemini] Processing function call %lu/%lu: %@", (unsigned long)(index + 1), (unsigned long)calls.count, call.name);
     [self updateStatus:[NSString stringWithFormat:@"Calling %@...", call.name]];
 
     [self executeMCPTool:call.name args:call.args completion:^(NSString *result) {
+        NSLog(@"[Gemini] Function %@ returned, sending result to Gemini", call.name);
+
         // Show function result in chat only if debug mode is enabled
         if (self.showDebugInfo) {
             [self addFunctionMessage:call.name result:result];
@@ -1108,6 +1276,7 @@ typedef NS_ENUM(NSInteger, ChatMessageType) {
 
         // Send result back to Gemini
         [self.geminiClient sendFunctionResult:call.name result:result];
+        NSLog(@"[Gemini] sendFunctionResult called for %@", call.name);
     }];
 }
 

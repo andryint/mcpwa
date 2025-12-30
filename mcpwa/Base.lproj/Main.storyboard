@@ -83,6 +83,51 @@
                                     </items>
                                 </menu>
                             </menuItem>
+                            <menuItem title="Edit" id="edt-mnu-001">
+                                <modifierMask key="keyEquivalentModifierMask"/>
+                                <menu key="submenu" title="Edit" id="edt-sub-001">
+                                    <items>
+                                        <menuItem title="Undo" keyEquivalent="z" id="edt-und-001">
+                                            <connections>
+                                                <action selector="undo:" target="Ady-hI-5gd" id="edt-und-act"/>
+                                            </connections>
+                                        </menuItem>
+                                        <menuItem title="Redo" keyEquivalent="Z" id="edt-red-001">
+                                            <modifierMask key="keyEquivalentModifierMask" shift="YES" command="YES"/>
+                                            <connections>
+                                                <action selector="redo:" target="Ady-hI-5gd" id="edt-red-act"/>
+                                            </connections>
+                                        </menuItem>
+                                        <menuItem isSeparatorItem="YES" id="edt-sep-001"/>
+                                        <menuItem title="Cut" keyEquivalent="x" id="edt-cut-001">
+                                            <connections>
+                                                <action selector="cut:" target="Ady-hI-5gd" id="edt-cut-act"/>
+                                            </connections>
+                                        </menuItem>
+                                        <menuItem title="Copy" keyEquivalent="c" id="edt-cpy-001">
+                                            <connections>
+                                                <action selector="copy:" target="Ady-hI-5gd" id="edt-cpy-act"/>
+                                            </connections>
+                                        </menuItem>
+                                        <menuItem title="Paste" keyEquivalent="v" id="edt-pst-001">
+                                            <connections>
+                                                <action selector="paste:" target="Ady-hI-5gd" id="edt-pst-act"/>
+                                            </connections>
+                                        </menuItem>
+                                        <menuItem title="Delete" id="edt-del-001">
+                                            <modifierMask key="keyEquivalentModifierMask"/>
+                                            <connections>
+                                                <action selector="delete:" target="Ady-hI-5gd" id="edt-del-act"/>
+                                            </connections>
+                                        </menuItem>
+                                        <menuItem title="Select All" keyEquivalent="a" id="edt-sel-001">
+                                            <connections>
+                                                <action selector="selectAll:" target="Ady-hI-5gd" id="edt-sel-act"/>
+                                            </connections>
+                                        </menuItem>
+                                    </items>
+                                </menu>
+                            </menuItem>
                             <menuItem title="Window" id="aUF-d1-5bR">
                                 <modifierMask key="keyEquivalentModifierMask"/>
                                 <menu key="submenu" title="Window" systemMenu="window" id="Td7-aD-5lo">
