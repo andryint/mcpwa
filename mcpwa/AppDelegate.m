@@ -15,6 +15,7 @@
 #import "WALogger.h"
 #import "BotChatWindowController.h"
 #import "DebugConfigWindowController.h"
+#import "SettingsWindowController.h"
 
 @interface AppDelegate ()
 @property (nonatomic, strong) MCPServer *server;
@@ -30,6 +31,9 @@
     [self parseCommandLineArguments];
     [self setupLogWindow];
     [self checkInitialStatus];
+
+    // Apply saved theme preference
+    [SettingsWindowController applyThemeToAllWindows];
 
     // Subscribe to WALogger notifications
     [[NSNotificationCenter defaultCenter] addObserver:self
@@ -760,13 +764,8 @@
 #pragma mark - Settings Actions
 
 - (IBAction)showSettings:(id)sender {
-    // Show bot chat window (main window) and open settings popover
-    [self.botChatController showWindow];
-
-    // Trigger settings popover after a short delay to ensure window is visible
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.1 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-        [self.botChatController showSettings:nil];
-    });
+    // Open the Settings window for user preferences
+    [[SettingsWindowController sharedController] showWindow];
 }
 
 @end

@@ -8,14 +8,69 @@
 #import "BotChatWindowController.h"
 #import "WAAccessibility.h"
 #import "DebugConfigWindowController.h"
+#import "SettingsWindowController.h"
 #import "WALogger.h"
 
-// Chat bubble colors
-#define kUserBubbleColor [NSColor colorWithRed:0.0 green:0.48 blue:1.0 alpha:1.0]
-#define kBotBubbleColor [NSColor colorWithWhite:0.25 alpha:1.0]
-#define kFunctionBubbleColor [NSColor colorWithRed:0.4 green:0.3 blue:0.6 alpha:1.0]
-#define kBackgroundColor [NSColor colorWithWhite:0.12 alpha:1.0]
-#define kInputBackgroundColor [NSColor colorWithWhite:0.18 alpha:1.0]
+// Claude-style light mode colors
+// User bubble: warm beige/tan (Claude style)
+#define kUserBubbleColorLight [NSColor colorWithRed:0.91 green:0.87 blue:0.82 alpha:1.0]  // #E8DDD2
+#define kUserBubbleColorDark [NSColor colorWithRed:0.35 green:0.32 blue:0.28 alpha:1.0]   // Dark mode variant
+
+// Bot bubble: white with subtle appearance (Claude style)
+#define kBotBubbleColorLight [NSColor colorWithRed:1.0 green:1.0 blue:1.0 alpha:1.0]      // Pure white
+#define kBotBubbleColorDark [NSColor colorWithWhite:0.22 alpha:1.0]                        // Dark gray
+
+// Function bubble color (muted purple)
+#define kFunctionBubbleColor [NSColor colorWithRed:0.45 green:0.38 blue:0.55 alpha:1.0]
+
+// Claude-style background colors
+#define kBackgroundColorLight [NSColor colorWithRed:0.98 green:0.976 blue:0.969 alpha:1.0]  // #FAF9F7
+#define kBackgroundColorDark [NSColor colorWithWhite:0.12 alpha:1.0]
+
+// Input area background
+#define kInputBackgroundColorLight [NSColor colorWithRed:0.98 green:0.976 blue:0.969 alpha:1.0]
+#define kInputBackgroundColorDark [NSColor colorWithWhite:0.15 alpha:1.0]
+
+// Text colors
+#define kTextColorLight [NSColor colorWithRed:0.2 green:0.18 blue:0.16 alpha:1.0]          // Dark brown
+#define kTextColorDark [NSColor colorWithWhite:0.92 alpha:1.0]
+#define kSecondaryTextColorLight [NSColor colorWithRed:0.45 green:0.42 blue:0.4 alpha:1.0]
+#define kSecondaryTextColorDark [NSColor colorWithWhite:0.6 alpha:1.0]
+
+// Helper to check if current appearance is dark
+static inline BOOL isDarkMode(void) {
+    NSAppearance *appearance = [NSApp effectiveAppearance];
+    if (@available(macOS 10.14, *)) {
+        NSAppearanceName name = [appearance bestMatchFromAppearancesWithNames:@[NSAppearanceNameAqua, NSAppearanceNameDarkAqua]];
+        return [name isEqualToString:NSAppearanceNameDarkAqua];
+    }
+    return NO;
+}
+
+// Theme-aware color helpers
+static inline NSColor *backgroundColor(void) {
+    return isDarkMode() ? kBackgroundColorDark : kBackgroundColorLight;
+}
+
+static inline NSColor *inputBackgroundColor(void) {
+    return isDarkMode() ? kInputBackgroundColorDark : kInputBackgroundColorLight;
+}
+
+static inline NSColor *userBubbleColor(void) {
+    return isDarkMode() ? kUserBubbleColorDark : kUserBubbleColorLight;
+}
+
+static inline NSColor *botBubbleColor(void) {
+    return isDarkMode() ? kBotBubbleColorDark : kBotBubbleColorLight;
+}
+
+static inline NSColor *primaryTextColor(void) {
+    return isDarkMode() ? kTextColorDark : kTextColorLight;
+}
+
+static inline NSColor *secondaryTextColor(void) {
+    return isDarkMode() ? kSecondaryTextColorDark : kSecondaryTextColorLight;
+}
 
 // Message types for display
 typedef NS_ENUM(NSInteger, ChatMessageType) {
@@ -86,7 +141,8 @@ typedef NS_ENUM(NSInteger, ChatMessageType) {
     NSWindowStyleMask style = NSWindowStyleMaskTitled |
                               NSWindowStyleMaskClosable |
                               NSWindowStyleMaskMiniaturizable |
-                              NSWindowStyleMaskResizable;
+                              NSWindowStyleMaskResizable |
+                              NSWindowStyleMaskFullSizeContentView;
 
     NSWindow *window = [[NSWindow alloc] initWithContentRect:frame
                                                    styleMask:style
@@ -94,8 +150,23 @@ typedef NS_ENUM(NSInteger, ChatMessageType) {
                                                        defer:NO];
     window.title = @"WhatsApp Bot Chat";
     window.minSize = NSMakeSize(400, 400);
-    window.backgroundColor = kBackgroundColor;
+    window.backgroundColor = backgroundColor();
     [window center];
+
+    // Use smaller traffic light buttons (like Claude app)
+    window.titlebarAppearsTransparent = YES;
+    window.titleVisibility = NSWindowTitleHidden;
+
+    // Create a toolbar to enable compact titlebar style
+    NSToolbar *toolbar = [[NSToolbar alloc] initWithIdentifier:@"MainToolbar"];
+    toolbar.showsBaselineSeparator = NO;
+    toolbar.visible = NO;  // Hide toolbar but keep compact style
+    window.toolbar = toolbar;
+
+    // Use unified compact style for smaller traffic lights
+    if (@available(macOS 11.0, *)) {
+        window.toolbarStyle = NSWindowToolbarStyleUnifiedCompact;
+    }
 
     // Main window - normal level (not floating)
     window.level = NSNormalWindowLevel;
@@ -109,7 +180,7 @@ typedef NS_ENUM(NSInteger, ChatMessageType) {
 - (void)setupContentView {
     NSView *contentView = self.window.contentView;
     contentView.wantsLayer = YES;
-    contentView.layer.backgroundColor = kBackgroundColor.CGColor;
+    contentView.layer.backgroundColor = backgroundColor().CGColor;
 
     // Chat scroll view (takes most of the space)
     self.chatScrollView = [[NSScrollView alloc] initWithFrame:NSZeroRect];
@@ -118,7 +189,7 @@ typedef NS_ENUM(NSInteger, ChatMessageType) {
     self.chatScrollView.hasHorizontalScroller = NO;
     self.chatScrollView.autohidesScrollers = YES;
     self.chatScrollView.borderType = NSNoBorder;
-    self.chatScrollView.backgroundColor = kBackgroundColor;
+    self.chatScrollView.backgroundColor = backgroundColor();
     self.chatScrollView.drawsBackground = YES;
 
     // Stack view for chat messages
@@ -126,8 +197,8 @@ typedef NS_ENUM(NSInteger, ChatMessageType) {
     self.chatStackView.translatesAutoresizingMaskIntoConstraints = NO;
     self.chatStackView.orientation = NSUserInterfaceLayoutOrientationVertical;
     self.chatStackView.alignment = NSLayoutAttributeLeading;
-    self.chatStackView.spacing = 8;
-    self.chatStackView.edgeInsets = NSEdgeInsetsMake(10, 10, 10, 10);
+    self.chatStackView.spacing = 12;  // Slightly more spacing between messages
+    self.chatStackView.edgeInsets = NSEdgeInsetsMake(16, 24, 16, 24);  // More left/right margin
 
     // Flip the scroll view so content starts at top
     NSView *documentView = [[NSView alloc] initWithFrame:NSZeroRect];
@@ -141,7 +212,7 @@ typedef NS_ENUM(NSInteger, ChatMessageType) {
     NSView *inputContainer = [[NSView alloc] initWithFrame:NSZeroRect];
     inputContainer.translatesAutoresizingMaskIntoConstraints = NO;
     inputContainer.wantsLayer = YES;
-    inputContainer.layer.backgroundColor = kInputBackgroundColor.CGColor;
+    inputContainer.layer.backgroundColor = inputBackgroundColor().CGColor;
     [contentView addSubview:inputContainer];
 
     // Input scroll view (wraps the text view for multi-line input)
@@ -157,15 +228,25 @@ typedef NS_ENUM(NSInteger, ChatMessageType) {
     self.inputTextView = [[NSTextView alloc] initWithFrame:NSMakeRect(0, 0, 300, 28)];
     self.inputTextView.delegate = self;
     self.inputTextView.font = [NSFont systemFontOfSize:14];
-    self.inputTextView.textColor = [NSColor whiteColor];
-    self.inputTextView.insertionPointColor = [NSColor whiteColor];
-    self.inputTextView.backgroundColor = [NSColor colorWithWhite:0.22 alpha:1.0];
+    self.inputTextView.textColor = primaryTextColor();
+    self.inputTextView.insertionPointColor = primaryTextColor();
+    // Light mode: white input field with subtle border; Dark mode: dark background
+    if (isDarkMode()) {
+        self.inputTextView.backgroundColor = [NSColor colorWithWhite:0.18 alpha:1.0];
+    } else {
+        self.inputTextView.backgroundColor = [NSColor whiteColor];
+    }
     self.inputTextView.drawsBackground = YES;
     self.inputTextView.wantsLayer = YES;
-    self.inputTextView.layer.cornerRadius = 8;
+    self.inputTextView.layer.cornerRadius = 12;
+    // Add subtle border in light mode
+    if (!isDarkMode()) {
+        self.inputTextView.layer.borderWidth = 1.0;
+        self.inputTextView.layer.borderColor = [NSColor colorWithWhite:0.85 alpha:1.0].CGColor;
+    }
     self.inputTextView.richText = NO;
     self.inputTextView.allowsUndo = YES;
-    self.inputTextView.textContainerInset = NSMakeSize(8, 6);
+    self.inputTextView.textContainerInset = NSMakeSize(10, 8);
     self.inputTextView.textContainer.widthTracksTextView = YES;
     self.inputTextView.verticallyResizable = YES;
     self.inputTextView.horizontallyResizable = NO;
@@ -178,14 +259,14 @@ typedef NS_ENUM(NSInteger, ChatMessageType) {
     self.placeholderLabel = [NSTextField labelWithString:@"Type a message..."];
     self.placeholderLabel.translatesAutoresizingMaskIntoConstraints = NO;
     self.placeholderLabel.font = [NSFont systemFontOfSize:14];
-    self.placeholderLabel.textColor = [NSColor colorWithWhite:0.5 alpha:1.0];
+    self.placeholderLabel.textColor = secondaryTextColor();
     self.placeholderLabel.backgroundColor = [NSColor clearColor];
     self.placeholderLabel.bezeled = NO;
     self.placeholderLabel.editable = NO;
     self.placeholderLabel.selectable = NO;
     [inputContainer addSubview:self.placeholderLabel];
 
-    // Send button (arrow up icon)
+    // Send button (arrow up icon) - Claude uses warm brown/tan accent
     NSImage *sendImage = [NSImage imageWithSystemSymbolName:@"arrow.up" accessibilityDescription:@"Send"];
     NSImageSymbolConfiguration *config = [NSImageSymbolConfiguration configurationWithPointSize:14 weight:NSFontWeightBold];
     sendImage = [sendImage imageWithSymbolConfiguration:config];
@@ -195,7 +276,11 @@ typedef NS_ENUM(NSInteger, ChatMessageType) {
     self.sendButton.bordered = NO;
     self.sendButton.keyEquivalent = @"\r"; // Enter key
     self.sendButton.wantsLayer = YES;
-    self.sendButton.layer.backgroundColor = [NSColor colorWithRed:0.0 green:0.4 blue:0.8 alpha:1.0].CGColor;
+    // Claude-style warm accent color
+    NSColor *accentColor = isDarkMode() ?
+        [NSColor colorWithRed:0.85 green:0.75 blue:0.65 alpha:1.0] :
+        [NSColor colorWithRed:0.45 green:0.38 blue:0.32 alpha:1.0];
+    self.sendButton.layer.backgroundColor = accentColor.CGColor;
     self.sendButton.layer.cornerRadius = 14;
     self.sendButton.contentTintColor = [NSColor whiteColor];
     [inputContainer addSubview:self.sendButton];
@@ -209,12 +294,12 @@ typedef NS_ENUM(NSInteger, ChatMessageType) {
     self.stopButton.bordered = NO;
     self.stopButton.hidden = YES;
     self.stopButton.wantsLayer = YES;
-    self.stopButton.layer.backgroundColor = [NSColor colorWithRed:0.0 green:0.4 blue:0.8 alpha:1.0].CGColor;
+    self.stopButton.layer.backgroundColor = accentColor.CGColor;
     self.stopButton.layer.cornerRadius = 14;
     self.stopButton.contentTintColor = [NSColor whiteColor];
     [inputContainer addSubview:self.stopButton];
 
-    // Model selector dropdown (styled lighter like status label)
+    // Model selector dropdown
     self.modelSelector = [[NSPopUpButton alloc] initWithFrame:NSZeroRect pullsDown:NO];
     self.modelSelector.translatesAutoresizingMaskIntoConstraints = NO;
     self.modelSelector.target = self;
@@ -222,7 +307,7 @@ typedef NS_ENUM(NSInteger, ChatMessageType) {
     self.modelSelector.font = [NSFont systemFontOfSize:11];
     self.modelSelector.controlSize = NSControlSizeSmall;
     self.modelSelector.bordered = NO;
-    self.modelSelector.contentTintColor = [NSColor colorWithWhite:0.6 alpha:1.0];
+    self.modelSelector.contentTintColor = secondaryTextColor();
     [[self.modelSelector cell] setArrowPosition:NSPopUpArrowAtBottom];
     [self populateModelSelector];
     [inputContainer addSubview:self.modelSelector];
@@ -233,7 +318,7 @@ typedef NS_ENUM(NSInteger, ChatMessageType) {
     self.loadingIndicator.style = NSProgressIndicatorStyleSpinning;
     self.loadingIndicator.controlSize = NSControlSizeRegular;
     self.loadingIndicator.displayedWhenStopped = NO;
-    self.loadingIndicator.appearance = [NSAppearance appearanceNamed:NSAppearanceNameVibrantLight];
+    // Use system appearance for loading indicator
     [inputContainer addSubview:self.loadingIndicator];
 
     // Status label
@@ -241,7 +326,7 @@ typedef NS_ENUM(NSInteger, ChatMessageType) {
     self.statusLabel.translatesAutoresizingMaskIntoConstraints = NO;
     self.statusLabel.stringValue = @"";
     self.statusLabel.font = [NSFont systemFontOfSize:11];
-    self.statusLabel.textColor = [NSColor colorWithWhite:0.6 alpha:1.0];
+    self.statusLabel.textColor = secondaryTextColor();
     self.statusLabel.bezeled = NO;
     self.statusLabel.editable = NO;
     self.statusLabel.selectable = NO;
@@ -274,8 +359,9 @@ typedef NS_ENUM(NSInteger, ChatMessageType) {
     self.inputContainerHeightConstraint = [inputContainer.heightAnchor constraintEqualToConstant:80];
     self.inputContainerHeightConstraint.active = YES;
 
+    // Add top padding to account for titlebar area with traffic light buttons
     [NSLayoutConstraint activateConstraints:@[
-        [self.chatScrollView.topAnchor constraintEqualToAnchor:contentView.topAnchor],
+        [self.chatScrollView.topAnchor constraintEqualToAnchor:contentView.topAnchor constant:8],
         [self.chatScrollView.bottomAnchor constraintEqualToAnchor:inputContainer.topAnchor],
         [inputContainer.bottomAnchor constraintEqualToAnchor:contentView.bottomAnchor]
     ]];
@@ -287,10 +373,10 @@ typedef NS_ENUM(NSInteger, ChatMessageType) {
         [self.inputScrollView.trailingAnchor constraintEqualToAnchor:self.loadingIndicator.leadingAnchor constant:-8]
     ]];
 
-    // Placeholder label positioned inside the text view area
+    // Placeholder label positioned inside the text view area (match textContainerInset)
     [NSLayoutConstraint activateConstraints:@[
-        [self.placeholderLabel.leadingAnchor constraintEqualToAnchor:self.inputScrollView.leadingAnchor constant:12],
-        [self.placeholderLabel.topAnchor constraintEqualToAnchor:self.inputScrollView.topAnchor constant:6]
+        [self.placeholderLabel.leadingAnchor constraintEqualToAnchor:self.inputScrollView.leadingAnchor constant:14],
+        [self.placeholderLabel.topAnchor constraintEqualToAnchor:self.inputScrollView.topAnchor constant:8]
     ]];
 
     // Loading indicator and send button on the right, vertically centered with input
@@ -386,6 +472,9 @@ typedef NS_ENUM(NSInteger, ChatMessageType) {
     if (savedModel.length > 0) {
         self.geminiClient.model = savedModel;
     }
+
+    // Update model selector to reflect the loaded preference
+    [self selectModelInSelector:self.geminiClient.model];
 
     NSString *displayName = [GeminiClient displayNameForModel:self.geminiClient.model];
     [self updateStatus:[NSString stringWithFormat:@"Ready (%@)", displayName]];
@@ -552,10 +641,14 @@ typedef NS_ENUM(NSInteger, ChatMessageType) {
         NSString *displayName = [GeminiClient displayNameForModel:modelId];
         [self.modelSelector addItemWithTitle:displayName];
         self.modelSelector.lastItem.representedObject = modelId;
+    }
+}
 
-        // Select current model
-        if ([modelId isEqualToString:self.geminiClient.model]) {
-            [self.modelSelector selectItem:self.modelSelector.lastItem];
+- (void)selectModelInSelector:(NSString *)modelId {
+    for (NSMenuItem *item in self.modelSelector.itemArray) {
+        if ([item.representedObject isEqualToString:modelId]) {
+            [self.modelSelector selectItem:item];
+            return;
         }
     }
 }
@@ -574,10 +667,6 @@ typedef NS_ENUM(NSInteger, ChatMessageType) {
     }
 }
 
-- (void)showSettings:(id)sender {
-    // Open the debug configuration window instead
-    [[DebugConfigWindowController sharedController] showWindow];
-}
 
 #pragma mark - Message Display
 
@@ -625,13 +714,13 @@ typedef NS_ENUM(NSInteger, ChatMessageType) {
 - (NSAttributedString *)attributedStringFromMarkdown:(NSString *)markdown textColor:(NSColor *)textColor {
     NSMutableAttributedString *result = [[NSMutableAttributedString alloc] init];
 
-    NSFont *regularFont = [NSFont systemFontOfSize:13];
-    NSFont *boldFont = [NSFont boldSystemFontOfSize:13];
-    NSFont *italicFont = [NSFont fontWithDescriptor:[[regularFont fontDescriptor] fontDescriptorWithSymbolicTraits:NSFontDescriptorTraitItalic] size:13];
+    NSFont *regularFont = [NSFont systemFontOfSize:14];
+    NSFont *boldFont = [NSFont boldSystemFontOfSize:14];
+    NSFont *italicFont = [NSFont fontWithDescriptor:[[regularFont fontDescriptor] fontDescriptorWithSymbolicTraits:NSFontDescriptorTraitItalic] size:14];
     if (!italicFont) italicFont = regularFont;
-    NSFont *h3Font = [NSFont boldSystemFontOfSize:15];
-    NSFont *h2Font = [NSFont boldSystemFontOfSize:17];
-    NSFont *h1Font = [NSFont boldSystemFontOfSize:19];
+    NSFont *h3Font = [NSFont boldSystemFontOfSize:16];
+    NSFont *h2Font = [NSFont boldSystemFontOfSize:18];
+    NSFont *h1Font = [NSFont boldSystemFontOfSize:20];
 
     NSDictionary *defaultAttrs = @{
         NSFontAttributeName: regularFont,
@@ -857,41 +946,74 @@ typedef NS_ENUM(NSInteger, ChatMessageType) {
     NSView *bubble = [[NSView alloc] initWithFrame:NSZeroRect];
     bubble.translatesAutoresizingMaskIntoConstraints = NO;
     bubble.wantsLayer = YES;
-    bubble.layer.cornerRadius = 12;
 
     // Style based on message type
     NSColor *bubbleColor;
-    NSColor *textColor = [NSColor whiteColor];
+    NSColor *textColor;
     BOOL alignRight = NO;
     BOOL useMarkdown = NO;
+    BOOL useBubbleStyle = YES;  // Whether to show bubble background
     NSString *displayText = message.text;
+    CGFloat cornerRadius = 16;
+
+    // Calculate max width as 3/4 of the chat view width
+    CGFloat chatWidth = self.chatScrollView.bounds.size.width;
+    if (chatWidth < 100) chatWidth = 500;  // Fallback if not yet laid out
+    CGFloat maxBubbleWidth = floor(chatWidth * 0.75);
+    CGFloat horizontalPadding = 14;
+    CGFloat maxTextWidth = maxBubbleWidth - (horizontalPadding * 2);
 
     switch (message.type) {
         case ChatMessageTypeUser:
-            bubbleColor = kUserBubbleColor;
+            // Claude-style user bubble: warm beige/tan, right-aligned
+            bubbleColor = userBubbleColor();
+            textColor = primaryTextColor();
             alignRight = YES;
+            useBubbleStyle = YES;
             break;
         case ChatMessageTypeBot:
-            bubbleColor = kBotBubbleColor;
+            // Claude-style: no bubble, just text on the left spanning 3/4 width
+            bubbleColor = [NSColor clearColor];
+            textColor = primaryTextColor();
             useMarkdown = YES;
+            useBubbleStyle = NO;  // No bubble background for bot
+            horizontalPadding = 0;
+            maxTextWidth = maxBubbleWidth;  // Full 3/4 width for text (no padding)
             break;
         case ChatMessageTypeFunction:
             bubbleColor = kFunctionBubbleColor;
+            textColor = [NSColor whiteColor]; // Always white on purple
             if (message.functionName) {
                 displayText = [NSString stringWithFormat:@"[%@]\n%@", message.functionName, message.text];
             }
+            cornerRadius = 8;
             break;
         case ChatMessageTypeError:
-            bubbleColor = [NSColor systemRedColor];
+            // Muted red for errors
+            if (isDarkMode()) {
+                bubbleColor = [NSColor colorWithRed:0.5 green:0.2 blue:0.2 alpha:1.0];
+            } else {
+                bubbleColor = [NSColor colorWithRed:0.95 green:0.9 blue:0.9 alpha:1.0];
+            }
+            textColor = isDarkMode() ? [NSColor whiteColor] : [NSColor colorWithRed:0.6 green:0.2 blue:0.2 alpha:1.0];
+            cornerRadius = 8;
             break;
         case ChatMessageTypeSystem:
-            bubbleColor = [NSColor colorWithWhite:0.3 alpha:1.0];
-            textColor = [NSColor secondaryLabelColor];
+            // System messages: subtle, muted appearance
+            if (isDarkMode()) {
+                bubbleColor = [NSColor colorWithWhite:0.2 alpha:1.0];
+            } else {
+                bubbleColor = [NSColor colorWithRed:0.96 green:0.95 blue:0.93 alpha:1.0];
+            }
+            textColor = secondaryTextColor();
+            cornerRadius = 8;
             break;
     }
 
+    bubble.layer.cornerRadius = useBubbleStyle ? cornerRadius : 0;
+
     // Create text view for selectable text with proper background handling
-    NSTextView *textView = [[NSTextView alloc] initWithFrame:NSMakeRect(0, 0, 326, 20)];
+    NSTextView *textView = [[NSTextView alloc] initWithFrame:NSMakeRect(0, 0, maxTextWidth, 20)];
     textView.translatesAutoresizingMaskIntoConstraints = NO;
     textView.editable = NO;
     textView.selectable = YES;
@@ -900,7 +1022,7 @@ typedef NS_ENUM(NSInteger, ChatMessageType) {
     textView.textContainerInset = NSZeroSize;
     textView.textContainer.lineFragmentPadding = 0;
     textView.textContainer.widthTracksTextView = NO;
-    textView.textContainer.containerSize = NSMakeSize(326, CGFLOAT_MAX);
+    textView.textContainer.containerSize = NSMakeSize(maxTextWidth, CGFLOAT_MAX);
     textView.verticallyResizable = YES;
     textView.horizontallyResizable = NO;
     // Enable clickable links
@@ -916,7 +1038,7 @@ typedef NS_ENUM(NSInteger, ChatMessageType) {
     } else {
         NSFont *font = (message.type == ChatMessageTypeFunction) ?
             [NSFont monospacedSystemFontOfSize:11 weight:NSFontWeightRegular] :
-            [NSFont systemFontOfSize:13];
+            [NSFont systemFontOfSize:14];
         NSDictionary *attrs = @{
             NSFontAttributeName: font,
             NSForegroundColorAttributeName: textColor
@@ -935,29 +1057,32 @@ typedef NS_ENUM(NSInteger, ChatMessageType) {
     [bubble addSubview:textView];
     [bubbleContainer addSubview:bubble];
 
-    // Constraints for text view in bubble - use fixed height based on content
+    // Padding for text inside bubble
+    CGFloat verticalPadding = useBubbleStyle ? 10 : 4;
+
+    // Calculate actual text width for proper bubble sizing
+    CGFloat actualTextWidth = MIN(ceil(textRect.size.width), maxTextWidth);
+
+    // Constraints for text view in bubble
     [NSLayoutConstraint activateConstraints:@[
-        [textView.leadingAnchor constraintEqualToAnchor:bubble.leadingAnchor constant:12],
-        [textView.trailingAnchor constraintEqualToAnchor:bubble.trailingAnchor constant:-12],
-        [textView.topAnchor constraintEqualToAnchor:bubble.topAnchor constant:8],
-        [textView.bottomAnchor constraintEqualToAnchor:bubble.bottomAnchor constant:-8],
-        [textView.widthAnchor constraintLessThanOrEqualToConstant:326],
+        [textView.leadingAnchor constraintEqualToAnchor:bubble.leadingAnchor constant:horizontalPadding],
+        [textView.trailingAnchor constraintEqualToAnchor:bubble.trailingAnchor constant:-horizontalPadding],
+        [textView.topAnchor constraintEqualToAnchor:bubble.topAnchor constant:verticalPadding],
+        [textView.bottomAnchor constraintEqualToAnchor:bubble.bottomAnchor constant:-verticalPadding],
+        [textView.widthAnchor constraintEqualToConstant:actualTextWidth],
         [textView.heightAnchor constraintEqualToConstant:textHeight]
     ]];
 
     // Constraints for bubble in container
-    CGFloat maxWidth = 350;
     if (alignRight) {
+        // User messages: right-aligned, bubble hugs content
         [NSLayoutConstraint activateConstraints:@[
-            [bubble.trailingAnchor constraintEqualToAnchor:bubbleContainer.trailingAnchor],
-            [bubble.leadingAnchor constraintGreaterThanOrEqualToAnchor:bubbleContainer.leadingAnchor],
-            [bubble.widthAnchor constraintLessThanOrEqualToConstant:maxWidth]
+            [bubble.trailingAnchor constraintEqualToAnchor:bubbleContainer.trailingAnchor]
         ]];
     } else {
+        // Bot/other messages: left-aligned
         [NSLayoutConstraint activateConstraints:@[
-            [bubble.leadingAnchor constraintEqualToAnchor:bubbleContainer.leadingAnchor],
-            [bubble.trailingAnchor constraintLessThanOrEqualToAnchor:bubbleContainer.trailingAnchor],
-            [bubble.widthAnchor constraintLessThanOrEqualToConstant:maxWidth]
+            [bubble.leadingAnchor constraintEqualToAnchor:bubbleContainer.leadingAnchor]
         ]];
     }
 
@@ -969,8 +1094,8 @@ typedef NS_ENUM(NSInteger, ChatMessageType) {
     // Add to stack view first, then set width constraint (views must be in same hierarchy)
     [self.chatStackView addArrangedSubview:bubbleContainer];
 
-    // Now that bubbleContainer is in the hierarchy, we can constrain to stack view width
-    [bubbleContainer.widthAnchor constraintEqualToAnchor:self.chatStackView.widthAnchor constant:-20].active = YES;
+    // Container spans full width (margins handled by stackView edgeInsets)
+    [bubbleContainer.widthAnchor constraintEqualToAnchor:self.chatStackView.widthAnchor constant:-48].active = YES;
 
     // Scroll to bottom after layout completes
     [self scrollToBottom];
