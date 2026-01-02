@@ -97,8 +97,8 @@ typedef NS_ENUM(NSInteger, ChatMessageType) {
     window.backgroundColor = kBackgroundColor;
     [window center];
 
-    // Make window floating (stays on top)
-    window.level = NSFloatingWindowLevel;
+    // Main window - normal level (not floating)
+    window.level = NSNormalWindowLevel;
 
     self.window = window;
 
@@ -307,6 +307,23 @@ typedef NS_ENUM(NSInteger, ChatMessageType) {
 
     self.geminiClient = [[GeminiClient alloc] initWithAPIKey:apiKey];
     self.geminiClient.delegate = self;
+
+    // Set up tool executor for automatic tool call looping
+    __weak typeof(self) weakSelf = self;
+    self.geminiClient.toolExecutor = ^(GeminiFunctionCall *call, GeminiToolExecutorCompletion completion) {
+        __strong typeof(weakSelf) strongSelf = weakSelf;
+        if (!strongSelf) return;
+
+        [strongSelf updateStatus:[NSString stringWithFormat:@"Calling %@...", call.name]];
+
+        [strongSelf executeMCPTool:call.name args:call.args completion:^(NSString *result) {
+            // Show function result in chat only if debug mode is enabled
+            if (strongSelf.showDebugInfo) {
+                [strongSelf addFunctionMessage:call.name result:result];
+            }
+            completion(result);
+        }];
+    };
 
     // Load saved model preference
     NSString *savedModel = [[NSUserDefaults standardUserDefaults] stringForKey:@"GeminiSelectedModel"];
@@ -796,38 +813,52 @@ typedef NS_ENUM(NSInteger, ChatMessageType) {
             break;
     }
 
-    // Create text field
-    NSTextField *textField = [[NSTextField alloc] initWithFrame:NSZeroRect];
-    textField.translatesAutoresizingMaskIntoConstraints = NO;
-    textField.bezeled = NO;
-    textField.editable = NO;
-    textField.selectable = YES;
-    textField.backgroundColor = [NSColor clearColor];
-    textField.lineBreakMode = NSLineBreakByWordWrapping;
-    textField.maximumNumberOfLines = 0;
-    textField.preferredMaxLayoutWidth = 350;
+    // Create text view for selectable text with proper background handling
+    NSTextView *textView = [[NSTextView alloc] initWithFrame:NSMakeRect(0, 0, 326, 20)];
+    textView.translatesAutoresizingMaskIntoConstraints = NO;
+    textView.editable = NO;
+    textView.selectable = YES;
+    textView.backgroundColor = [NSColor clearColor];
+    textView.drawsBackground = NO;
+    textView.textContainerInset = NSZeroSize;
+    textView.textContainer.lineFragmentPadding = 0;
+    textView.textContainer.widthTracksTextView = NO;
+    textView.textContainer.containerSize = NSMakeSize(326, CGFLOAT_MAX);
+    textView.verticallyResizable = YES;
+    textView.horizontallyResizable = NO;
 
     if (useMarkdown) {
-        textField.attributedStringValue = [self attributedStringFromMarkdown:displayText textColor:textColor];
+        [textView.textStorage setAttributedString:[self attributedStringFromMarkdown:displayText textColor:textColor]];
     } else {
-        textField.stringValue = displayText;
-        textField.font = (message.type == ChatMessageTypeFunction) ?
+        NSFont *font = (message.type == ChatMessageTypeFunction) ?
             [NSFont monospacedSystemFontOfSize:11 weight:NSFontWeightRegular] :
             [NSFont systemFontOfSize:13];
-        textField.textColor = textColor;
+        NSDictionary *attrs = @{
+            NSFontAttributeName: font,
+            NSForegroundColorAttributeName: textColor
+        };
+        NSAttributedString *attrStr = [[NSAttributedString alloc] initWithString:displayText attributes:attrs];
+        [textView.textStorage setAttributedString:attrStr];
     }
+
+    // Calculate size for text view
+    [textView.layoutManager ensureLayoutForTextContainer:textView.textContainer];
+    NSRect textRect = [textView.layoutManager usedRectForTextContainer:textView.textContainer];
+    CGFloat textHeight = ceil(textRect.size.height);
 
     bubble.layer.backgroundColor = bubbleColor.CGColor;
 
-    [bubble addSubview:textField];
+    [bubble addSubview:textView];
     [bubbleContainer addSubview:bubble];
 
-    // Constraints for text in bubble
+    // Constraints for text view in bubble - use fixed height based on content
     [NSLayoutConstraint activateConstraints:@[
-        [textField.leadingAnchor constraintEqualToAnchor:bubble.leadingAnchor constant:12],
-        [textField.trailingAnchor constraintEqualToAnchor:bubble.trailingAnchor constant:-12],
-        [textField.topAnchor constraintEqualToAnchor:bubble.topAnchor constant:8],
-        [textField.bottomAnchor constraintEqualToAnchor:bubble.bottomAnchor constant:-8]
+        [textView.leadingAnchor constraintEqualToAnchor:bubble.leadingAnchor constant:12],
+        [textView.trailingAnchor constraintEqualToAnchor:bubble.trailingAnchor constant:-12],
+        [textView.topAnchor constraintEqualToAnchor:bubble.topAnchor constant:8],
+        [textView.bottomAnchor constraintEqualToAnchor:bubble.bottomAnchor constant:-8],
+        [textView.widthAnchor constraintLessThanOrEqualToConstant:326],
+        [textView.heightAnchor constraintEqualToConstant:textHeight]
     ]];
 
     // Constraints for bubble in container
@@ -857,10 +888,23 @@ typedef NS_ENUM(NSInteger, ChatMessageType) {
     // Now that bubbleContainer is in the hierarchy, we can constrain to stack view width
     [bubbleContainer.widthAnchor constraintEqualToAnchor:self.chatStackView.widthAnchor constant:-20].active = YES;
 
-    // Scroll to bottom
-    dispatch_async(dispatch_get_main_queue(), ^{
-        NSPoint newScrollOrigin = NSMakePoint(0.0, NSMaxY(self.chatScrollView.documentView.frame));
-        [self.chatScrollView.documentView scrollPoint:newScrollOrigin];
+    // Scroll to bottom after layout completes
+    [self scrollToBottom];
+}
+
+- (void)scrollToBottom {
+    // Delay scroll to allow layout to complete
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.1 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+        // Force layout
+        [self.window layoutIfNeeded];
+
+        // Get the last view in the stack
+        NSArray *arrangedSubviews = self.chatStackView.arrangedSubviews;
+        if (arrangedSubviews.count > 0) {
+            NSView *lastView = arrangedSubviews.lastObject;
+            // Scroll to make the last view visible
+            [lastView scrollRectToVisible:lastView.bounds];
+        }
     });
 }
 
@@ -1224,10 +1268,20 @@ typedef NS_ENUM(NSInteger, ChatMessageType) {
         return;
     }
 
-    // Handle function calls first - they take priority
+    // When toolExecutor is set, GeminiClient handles the tool loop internally.
+    // This delegate is called for intermediate responses during the loop.
+    if (client.toolExecutor) {
+        // Show intermediate text alongside function calls if present
+        if (response.text) {
+            [self addBotMessage:response.text];
+        }
+        // Function calls are handled by the toolExecutor, no action needed here
+        return;
+    }
+
+    // Legacy path: when toolExecutor is not set, handle function calls here
     if (response.hasFunctionCalls) {
-        NSLog(@"[Gemini] Processing %lu function calls", (unsigned long)response.functionCalls.count);
-        // Show text alongside function calls if present
+        NSLog(@"[Gemini] Processing %lu function calls (legacy path)", (unsigned long)response.functionCalls.count);
         if (response.text) {
             [self addBotMessage:response.text];
         }
@@ -1236,6 +1290,26 @@ typedef NS_ENUM(NSInteger, ChatMessageType) {
     }
 
     // No function calls - show text response and finish
+    if (response.text) {
+        [self addBotMessage:response.text];
+    }
+    [self setProcessing:NO];
+    [self updateStatus:@"Ready"];
+}
+
+- (void)geminiClient:(GeminiClient *)client didCompleteToolLoopWithResponse:(GeminiChatResponse *)response {
+    NSLog(@"[Gemini] didCompleteToolLoopWithResponse - error: %@, text: %@",
+          response.error ?: @"none",
+          response.text ? @"yes" : @"no");
+
+    if (response.error) {
+        [self addErrorMessage:response.error];
+        [self setProcessing:NO];
+        [self updateStatus:@"Error"];
+        return;
+    }
+
+    // Tool loop completed - show final text response
     if (response.text) {
         [self addBotMessage:response.text];
     }

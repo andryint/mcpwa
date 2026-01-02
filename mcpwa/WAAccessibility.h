@@ -27,6 +27,7 @@ typedef NS_ENUM(NSInteger, WAChatFilter) {
 @property (nonatomic, assign) BOOL isPinned;
 @property (nonatomic, assign) BOOL isGroup;
 @property (nonatomic, assign) BOOL isUnread;
+@property (nonatomic, assign) BOOL isSelected;               // Currently open/selected chat
 @property (nonatomic, assign) NSInteger index;               // Position in chat list
 @end
 

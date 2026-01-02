@@ -46,6 +46,10 @@ typedef NS_ENUM(NSInteger, GeminiRole) {
 @property (nonatomic, copy, nullable) NSString *error;
 @end
 
+// Tool executor block type - executes a tool and returns the result
+typedef void (^GeminiToolExecutorCompletion)(NSString *result);
+typedef void (^GeminiToolExecutor)(GeminiFunctionCall *call, GeminiToolExecutorCompletion completion);
+
 // Delegate for streaming responses and function calls
 @protocol GeminiClientDelegate <NSObject>
 @optional
@@ -53,6 +57,8 @@ typedef NS_ENUM(NSInteger, GeminiRole) {
 - (void)geminiClient:(id)client didCompleteSendWithResponse:(GeminiChatResponse *)response;
 - (void)geminiClient:(id)client didFailWithError:(NSError *)error;
 - (void)geminiClient:(id)client didRequestFunctionCall:(GeminiFunctionCall *)call;
+// Called when tool loop completes with final text response
+- (void)geminiClient:(id)client didCompleteToolLoopWithResponse:(GeminiChatResponse *)response;
 @end
 
 // Available Gemini models
@@ -70,6 +76,7 @@ extern NSString * const kGeminiModel_3_0_Pro;
 @property (nonatomic, copy) NSString *model;
 @property (nonatomic, strong, readonly) NSMutableArray<GeminiMessage *> *conversationHistory;
 @property (nonatomic, assign) BOOL enableFunctionCalling;
+@property (nonatomic, copy, nullable) GeminiToolExecutor toolExecutor; // Set this to enable automatic tool call looping
 
 // Initialization
 - (instancetype)initWithAPIKey:(NSString *)apiKey;

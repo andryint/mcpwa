@@ -8,7 +8,7 @@
 #import "GeminiClient.h"
 
 static NSString * const kGeminiAPIBaseURL = @"https://generativelanguage.googleapis.com/v1beta/models";
-static NSString * const kDefaultModel = @"gemini-2.0-flash-exp";
+static NSString * const kDefaultModel = @"gemini-3-pro-preview";
 
 // Model constants
 NSString * const kGeminiModel_2_0_Flash = @"gemini-2.0-flash-exp";
@@ -71,11 +71,14 @@ NSString * const kGeminiModel_3_0_Pro = @"gemini-3-pro-preview";
 
 #pragma mark - GeminiClient
 
+static const NSInteger kMaxToolLoopIterations = 20; // Safety limit to prevent infinite loops
+
 @interface GeminiClient ()
 @property (nonatomic, copy) NSString *apiKey;
 @property (nonatomic, strong) NSMutableArray<GeminiMessage *> *conversationHistory;
 @property (nonatomic, strong) NSArray<NSDictionary *> *mcpToolDefinitions;
 @property (nonatomic, strong) NSURLSessionDataTask *currentTask;
+@property (nonatomic, assign) NSInteger toolLoopIterations;
 @end
 
 @implementation GeminiClient
@@ -182,6 +185,9 @@ NSString * const kGeminiModel_3_0_Pro = @"gemini-3-pro-preview";
     // Add user message to history
     [self.conversationHistory addObject:[GeminiMessage userMessage:message]];
 
+    // Reset tool loop counter for new message
+    self.toolLoopIterations = 0;
+
     [self sendRequestWithFunctionResult:nil];
 }
 
@@ -211,15 +217,37 @@ NSString * const kGeminiModel_3_0_Pro = @"gemini-3-pro-preview";
     NSMutableDictionary *body = [NSMutableDictionary dictionary];
 
     // Add system instruction
+    body[@"toolConfig"] = @{
+        @"functionCallingConfig": @{
+            @"mode": @"AUTO"
+        }
+    };
+    
     body[@"systemInstruction"] = @{
         @"parts": @[@{
-            @"text": @"You are a helpful assistant with access to WhatsApp through MCP tools. "
-                     "You can read messages, list chats, search conversations, and send messages. "
-                     "Always start a WhatsApp session before using other WhatsApp tools, and stop it when done. "
-                     "Be concise and helpful in your responses."
+            @"text": @"<ROLE>\n"
+                     "You are a Grounded WhatsApp Assistant. You interact with the user's real-time data strictly via MCP tools.\n"
+                     "</ROLE>\n\n"
+                     
+                     "<PROTOCOLS>\n"
+                     "1. SESSION_FLOW: You MUST execute `whatsapp_start_session` before any data request. You MUST execute `whatsapp_stop_session` after your final response.\n"
+                     "2. SOURCE_OF_TRUTH: Your ONLY source of information is the raw output from a successful tool call. If the tool has not been called or returned an error, you have NO information.\n"
+                     "3. NO_SIMULATION: Never generate text that mimics a tool output (e.g., JSON blocks, lists of chats). You must wait for the actual system to provide the tool result.\n"
+                     "4. ERROR_REPORTING: If a tool returns 'empty', 'null', or an error, state: \"I couldn't find any information in your WhatsApp for that request.\"\n"
+                     "</PROTOCOLS>\n\n"
+                     
+                     "<CONSTRAINTS>\n"
+                     "1. NEVER invent contact names, message content, or group titles. \n"
+                     "2. NEVER use placeholder data or 'example' chats to fill a response.\n"
+                     "3. Use external knowledge ONLY to provide context for existing chat data (e.g., explaining a link found in a message), never to supplement missing data.\n"
+                     "</CONSTRAINTS>\n\n"
+                     
+                     "<STYLE>\n"
+                     "Be concise, technical, and strictly factual. Use bullet points for chat lists only when data is verified.\n"
+                     "</STYLE>"
         }]
     };
-
+    
     // Build contents array from conversation history
     NSMutableArray *contents = [NSMutableArray array];
 
@@ -413,11 +441,26 @@ NSString * const kGeminiModel_3_0_Pro = @"gemini-3-pro-preview";
 
 - (void)notifyComplete:(GeminiChatResponse *)response {
     dispatch_async(dispatch_get_main_queue(), ^{
+        // If we have a tool executor and there are function calls, handle the looping internally
+        if (self.toolExecutor && response.hasFunctionCalls) {
+            [self executeToolLoopWithResponse:response];
+            return;
+        }
+
+        // If we have a tool executor and were in a tool loop, notify completion
+        if (self.toolExecutor && self.toolLoopIterations > 0) {
+            NSLog(@"[GeminiClient] Tool loop completed after %ld iterations with text response", (long)self.toolLoopIterations);
+            if ([self.delegate respondsToSelector:@selector(geminiClient:didCompleteToolLoopWithResponse:)]) {
+                [self.delegate geminiClient:self didCompleteToolLoopWithResponse:response];
+            }
+            return;
+        }
+
         if ([self.delegate respondsToSelector:@selector(geminiClient:didCompleteSendWithResponse:)]) {
             [self.delegate geminiClient:self didCompleteSendWithResponse:response];
         }
 
-        // Also notify about function calls
+        // Also notify about function calls (for backwards compatibility when toolExecutor is not set)
         if (response.hasFunctionCalls) {
             for (GeminiFunctionCall *call in response.functionCalls) {
                 if ([self.delegate respondsToSelector:@selector(geminiClient:didRequestFunctionCall:)]) {
@@ -425,6 +468,65 @@ NSString * const kGeminiModel_3_0_Pro = @"gemini-3-pro-preview";
                 }
             }
         }
+    });
+}
+
+#pragma mark - Tool Loop Execution
+
+- (void)executeToolLoopWithResponse:(GeminiChatResponse *)response {
+    self.toolLoopIterations++;
+
+    // Safety check to prevent infinite loops
+    if (self.toolLoopIterations > kMaxToolLoopIterations) {
+        NSLog(@"[GeminiClient] Tool loop exceeded maximum iterations (%ld), stopping", (long)kMaxToolLoopIterations);
+        GeminiChatResponse *errorResponse = [[GeminiChatResponse alloc] init];
+        errorResponse.error = [NSString stringWithFormat:@"Tool loop exceeded maximum iterations (%ld)", (long)kMaxToolLoopIterations];
+        if ([self.delegate respondsToSelector:@selector(geminiClient:didCompleteToolLoopWithResponse:)]) {
+            [self.delegate geminiClient:self didCompleteToolLoopWithResponse:errorResponse];
+        }
+        return;
+    }
+
+    NSLog(@"[GeminiClient] Tool loop iteration %ld, processing %lu function calls",
+          (long)self.toolLoopIterations, (unsigned long)response.functionCalls.count);
+
+    // Notify delegate about intermediate response (for UI updates)
+    if ([self.delegate respondsToSelector:@selector(geminiClient:didCompleteSendWithResponse:)]) {
+        [self.delegate geminiClient:self didCompleteSendWithResponse:response];
+    }
+
+    // Notify about each function call
+    for (GeminiFunctionCall *call in response.functionCalls) {
+        if ([self.delegate respondsToSelector:@selector(geminiClient:didRequestFunctionCall:)]) {
+            [self.delegate geminiClient:self didRequestFunctionCall:call];
+        }
+    }
+
+    // Execute all function calls sequentially
+    [self executeFunctionCallsAtIndex:0 calls:response.functionCalls];
+}
+
+- (void)executeFunctionCallsAtIndex:(NSUInteger)index calls:(NSArray<GeminiFunctionCall *> *)calls {
+    if (index >= calls.count) {
+        // All function calls executed, send results back to Gemini
+        NSLog(@"[GeminiClient] All %lu function calls executed, sending results to Gemini", (unsigned long)calls.count);
+        [self sendRequestWithFunctionResult:nil];
+        return;
+    }
+
+    GeminiFunctionCall *call = calls[index];
+    NSLog(@"[GeminiClient] Executing function %lu/%lu: %@", (unsigned long)(index + 1), (unsigned long)calls.count, call.name);
+
+    __weak typeof(self) weakSelf = self;
+    self.toolExecutor(call, ^(NSString *result) {
+        __strong typeof(weakSelf) strongSelf = weakSelf;
+        if (!strongSelf) return;
+
+        // Add function result to history
+        [strongSelf.conversationHistory addObject:[GeminiMessage functionResult:call.name result:result]];
+
+        // Process next function call
+        [strongSelf executeFunctionCallsAtIndex:index + 1 calls:calls];
     });
 }
 

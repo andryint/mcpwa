@@ -27,17 +27,21 @@
 
 - (void)applicationDidFinishLaunching:(NSNotification *)notification {
     [self parseCommandLineArguments];
-    [self setupWindow];
+    [self setupLogWindow];
     [self checkInitialStatus];
-    
+
     // Subscribe to WALogger notifications
     [[NSNotificationCenter defaultCenter] addObserver:self
                                              selector:@selector(handleLogNotification:)
                                                  name:WALogNotification
                                                object:nil];
-    
+
     // Auto-start server on launch
     [self startServer];
+
+    // Show Bot Chat as main window
+    self.botChatController = [BotChatWindowController sharedController];
+    [self.botChatController showWindow];
 }
 
 - (void)parseCommandLineArguments {
@@ -64,19 +68,19 @@
     }
 }
 
-- (void)setupWindow {
-    // Create main window
+- (void)setupLogWindow {
+    // Create log window (secondary, shown on demand with Cmd+B)
     NSRect frame = NSMakeRect(100, 100, 800, 500);
     NSWindowStyleMask style = NSWindowStyleMaskTitled |
     NSWindowStyleMaskClosable |
     NSWindowStyleMaskMiniaturizable |
     NSWindowStyleMaskResizable;
-    
+
     self.window = [[NSWindow alloc] initWithContentRect:frame
                                               styleMask:style
                                                 backing:NSBackingStoreBuffered
                                                   defer:NO];
-    self.window.title = @"WhatsApp Connector";
+    self.window.title = @"WhatsApp Connector - Log";
     self.window.minSize = NSMakeSize(600, 400);
 
     // Enable title bar accessory view
@@ -112,7 +116,7 @@
     scrollView.autohidesScrollers = YES;
     scrollView.borderType = NSBezelBorder;
     scrollView.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
-    
+
     self.logView = [[NSTextView alloc] initWithFrame:NSMakeRect(0, 0, 780, 380)];
     self.logView.editable = NO;
     self.logView.selectable = YES;
@@ -124,14 +128,12 @@
     [self.logView setVerticallyResizable:YES];
     [self.logView setHorizontallyResizable:NO];
     self.logView.textContainer.widthTracksTextView = YES;
-    
+
     scrollView.documentView = self.logView;
     [contentView addSubview:scrollView];
 
-    // Show window
-    [self.window makeKeyAndOrderFront:nil];
-    [NSApp activateIgnoringOtherApps:YES];
-    
+    // Do NOT show log window on startup - it opens on demand with Cmd+B
+
     // Welcome message
     [self appendLog:@"╔══════════════════════════════════════════════════════════════╗" color:NSColor.cyanColor];
     [self appendLog:@"║           WhatsApp Connector v1.0                            ║" color:NSColor.cyanColor];
@@ -738,22 +740,20 @@
     });
 }
 
-#pragma mark - Bot Chat Actions
+#pragma mark - Log Window Actions
 
-- (IBAction)toggleBotChat:(id)sender {
-    if (!self.botChatController) {
-        self.botChatController = [BotChatWindowController sharedController];
+- (IBAction)toggleLogWindow:(id)sender {
+    if (self.window.isVisible) {
+        [self.window orderOut:nil];
+    } else {
+        [self.window makeKeyAndOrderFront:nil];
     }
-    [self.botChatController toggleWindow];
 }
 
 #pragma mark - Settings Actions
 
 - (IBAction)showSettings:(id)sender {
-    // Open bot chat window and show settings popover
-    if (!self.botChatController) {
-        self.botChatController = [BotChatWindowController sharedController];
-    }
+    // Show bot chat window (main window) and open settings popover
     [self.botChatController showWindow];
 
     // Trigger settings popover after a short delay to ensure window is visible

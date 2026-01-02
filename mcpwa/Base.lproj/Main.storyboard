@@ -132,9 +132,9 @@
                                 <modifierMask key="keyEquivalentModifierMask"/>
                                 <menu key="submenu" title="Window" systemMenu="window" id="Td7-aD-5lo">
                                     <items>
-                                        <menuItem title="Bot Chat" keyEquivalent="b" id="bot-cht-001" userLabel="Bot Chat">
+                                        <menuItem title="Log Window" keyEquivalent="b" id="bot-cht-001" userLabel="Log Window">
                                             <connections>
-                                                <action selector="toggleBotChat:" target="Voe-Tx-rLC" id="bot-cht-act"/>
+                                                <action selector="toggleLogWindow:" target="Voe-Tx-rLC" id="bot-cht-act"/>
                                             </connections>
                                         </menuItem>
                                         <menuItem isSeparatorItem="YES" id="bot-cht-sep"/>

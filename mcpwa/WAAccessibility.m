@@ -783,33 +783,38 @@
         return @[];
     }
     
-    // Get direct children of the table view - these are chat buttons
+    // Get direct children of the table view - these are chat items
+    // Note: The currently selected/open chat appears as AXStaticText instead of AXButton
     NSArray *children = [self childrenOfElement:tableView];
-    
+
     NSInteger index = 0;
     for (id child in children) {
         AXUIElementRef element = (__bridge AXUIElementRef)child;
-        
+
         NSString *role = [self roleOfElement:element];
-        if (![role isEqualToString:@"AXButton"]) continue;
-        
         NSString *desc = [self descriptionOfElement:element];
         NSString *value = [self valueOfElement:element];
-        
+
+        // Chat items are either AXButton (unselected) or AXStaticText (selected/active)
+        BOOL isButton = [role isEqualToString:@"AXButton"];
+        BOOL isStaticText = [role isEqualToString:@"AXStaticText"];
+        if (!isButton && !isStaticText) continue;
+
         // Skip filter buttons (they have values like "1 of 4", "2 of 4")
         if (value && [value containsString:@" of "]) continue;
-        
-        // Skip buttons without a proper name
+
+        // Skip elements without a proper name
         if (!desc || desc.length == 0) continue;
-        
+
         WAChat *chat = [[WAChat alloc] init];
         chat.index = index++;
         chat.name = desc;
-        
+        chat.isSelected = isStaticText;  // Selected chat is rendered as static text
+
         if (value) {
             [self parseChatValue:value intoChat:chat];
         }
-        
+
         [chats addObject:chat];
     }
     
