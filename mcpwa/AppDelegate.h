@@ -51,6 +51,9 @@
 - (IBAction)debugScrollChatsDown:(id)sender;
 - (IBAction)debugScrollChatsUp:(id)sender;
 
+#pragma mark - Debug Configuration
+- (IBAction)showDebugConfig:(id)sender;
+
 #pragma mark - Bot Chat
 - (IBAction)toggleBotChat:(id)sender;
 

@@ -16,6 +16,11 @@ typedef NS_ENUM(NSInteger, WALogLevel) {
     WALogLevelError
 };
 
+typedef NS_ENUM(NSInteger, WALogCategory) {
+    WALogCategoryGeneral,      // General application logs
+    WALogCategoryAccessibility // Accessibility API related logs
+};
+
 @interface WALogger : NSObject
 
 + (void)debug:(NSString *)format, ... NS_FORMAT_FUNCTION(1,2);
@@ -23,7 +28,12 @@ typedef NS_ENUM(NSInteger, WALogLevel) {
 + (void)warn:(NSString *)format, ... NS_FORMAT_FUNCTION(1,2);
 + (void)error:(NSString *)format, ... NS_FORMAT_FUNCTION(1,2);
 
+/// Log with explicit category for filtering
++ (void)debug:(WALogCategory)category format:(NSString *)format, ... NS_FORMAT_FUNCTION(2,3);
++ (void)info:(WALogCategory)category format:(NSString *)format, ... NS_FORMAT_FUNCTION(2,3);
+
 + (void)log:(WALogLevel)level message:(NSString *)message;
++ (void)log:(WALogLevel)level category:(WALogCategory)category message:(NSString *)message;
 
 @end
 

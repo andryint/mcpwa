@@ -14,6 +14,7 @@
 #import "WAAccessibilityTest.h"
 #import "WALogger.h"
 #import "BotChatWindowController.h"
+#import "DebugConfigWindowController.h"
 
 @interface AppDelegate ()
 @property (nonatomic, strong) MCPServer *server;
@@ -738,6 +739,12 @@
     dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
         [WAAccessibilityTest testScrollChatsUp];
     });
+}
+
+#pragma mark - Debug Configuration
+
+- (IBAction)showDebugConfig:(id)sender {
+    [[DebugConfigWindowController sharedController] toggleWindow];
 }
 
 #pragma mark - Log Window Actions

@@ -7,6 +7,8 @@
 
 #import "BotChatWindowController.h"
 #import "WAAccessibility.h"
+#import "DebugConfigWindowController.h"
+#import "WALogger.h"
 
 // Chat bubble colors
 #define kUserBubbleColor [NSColor colorWithRed:0.0 green:0.48 blue:1.0 alpha:1.0]
@@ -37,24 +39,23 @@ typedef NS_ENUM(NSInteger, ChatMessageType) {
 
 #pragma mark - BotChatWindowController
 
-@interface BotChatWindowController () <NSPopoverDelegate>
+@interface BotChatWindowController () <NSPopoverDelegate, NSTextViewDelegate>
 @property (nonatomic, strong) GeminiClient *geminiClient;
 @property (nonatomic, strong) NSMutableArray<ChatDisplayMessage *> *messages;
 @property (nonatomic, strong) NSScrollView *chatScrollView;
 @property (nonatomic, strong) NSStackView *chatStackView;
-@property (nonatomic, strong) NSTextField *inputField;
+@property (nonatomic, strong) NSScrollView *inputScrollView;
+@property (nonatomic, strong) NSTextView *inputTextView;
+@property (nonatomic, strong) NSTextField *placeholderLabel;
+@property (nonatomic, strong) NSLayoutConstraint *inputContainerHeightConstraint;
 @property (nonatomic, strong) NSButton *sendButton;
 @property (nonatomic, strong) NSButton *stopButton;
-@property (nonatomic, strong) NSButton *settingsButton;
 @property (nonatomic, strong) NSProgressIndicator *loadingIndicator;
 @property (nonatomic, strong) NSTextField *statusLabel;
 @property (nonatomic, assign) BOOL isProcessing;
 @property (nonatomic, assign) BOOL isCancelled;
 @property (nonatomic, strong) NSArray<NSDictionary *> *mcpTools;
-@property (nonatomic, assign) BOOL showDebugInfo;
-@property (nonatomic, strong) NSPopover *settingsPopover;
 @property (nonatomic, strong) NSPopUpButton *modelSelector;
-@property (nonatomic, strong) NSButton *debugToggle;
 @end
 
 @implementation BotChatWindowController
@@ -72,7 +73,6 @@ typedef NS_ENUM(NSInteger, ChatMessageType) {
     self = [super init];
     if (self) {
         _messages = [NSMutableArray array];
-        _showDebugInfo = [[NSUserDefaults standardUserDefaults] boolForKey:@"GeminiShowDebugInfo"];
         [self setupWindow];
         [self setupGeminiClient];
         [self loadMCPTools];
@@ -144,16 +144,46 @@ typedef NS_ENUM(NSInteger, ChatMessageType) {
     inputContainer.layer.backgroundColor = kInputBackgroundColor.CGColor;
     [contentView addSubview:inputContainer];
 
-    // Input field
-    self.inputField = [[NSTextField alloc] initWithFrame:NSZeroRect];
-    self.inputField.translatesAutoresizingMaskIntoConstraints = NO;
-    self.inputField.placeholderString = @"Type a message...";
-    self.inputField.font = [NSFont systemFontOfSize:14];
-    self.inputField.bezeled = YES;
-    self.inputField.bezelStyle = NSTextFieldRoundedBezel;
-    self.inputField.delegate = self;
-    self.inputField.focusRingType = NSFocusRingTypeNone;
-    [inputContainer addSubview:self.inputField];
+    // Input scroll view (wraps the text view for multi-line input)
+    self.inputScrollView = [[NSScrollView alloc] initWithFrame:NSZeroRect];
+    self.inputScrollView.translatesAutoresizingMaskIntoConstraints = NO;
+    self.inputScrollView.hasVerticalScroller = YES;
+    self.inputScrollView.hasHorizontalScroller = NO;
+    self.inputScrollView.autohidesScrollers = YES;
+    self.inputScrollView.borderType = NSNoBorder;
+    self.inputScrollView.drawsBackground = NO;
+
+    // Input text view (multi-line, expands vertically)
+    self.inputTextView = [[NSTextView alloc] initWithFrame:NSMakeRect(0, 0, 300, 28)];
+    self.inputTextView.delegate = self;
+    self.inputTextView.font = [NSFont systemFontOfSize:14];
+    self.inputTextView.textColor = [NSColor whiteColor];
+    self.inputTextView.insertionPointColor = [NSColor whiteColor];
+    self.inputTextView.backgroundColor = [NSColor colorWithWhite:0.22 alpha:1.0];
+    self.inputTextView.drawsBackground = YES;
+    self.inputTextView.wantsLayer = YES;
+    self.inputTextView.layer.cornerRadius = 8;
+    self.inputTextView.richText = NO;
+    self.inputTextView.allowsUndo = YES;
+    self.inputTextView.textContainerInset = NSMakeSize(8, 6);
+    self.inputTextView.textContainer.widthTracksTextView = YES;
+    self.inputTextView.verticallyResizable = YES;
+    self.inputTextView.horizontallyResizable = NO;
+    self.inputTextView.autoresizingMask = NSViewWidthSizable;
+
+    self.inputScrollView.documentView = self.inputTextView;
+    [inputContainer addSubview:self.inputScrollView];
+
+    // Placeholder label (overlays the text view when empty)
+    self.placeholderLabel = [NSTextField labelWithString:@"Type a message..."];
+    self.placeholderLabel.translatesAutoresizingMaskIntoConstraints = NO;
+    self.placeholderLabel.font = [NSFont systemFontOfSize:14];
+    self.placeholderLabel.textColor = [NSColor colorWithWhite:0.5 alpha:1.0];
+    self.placeholderLabel.backgroundColor = [NSColor clearColor];
+    self.placeholderLabel.bezeled = NO;
+    self.placeholderLabel.editable = NO;
+    self.placeholderLabel.selectable = NO;
+    [inputContainer addSubview:self.placeholderLabel];
 
     // Send button (arrow up icon)
     NSImage *sendImage = [NSImage imageWithSystemSymbolName:@"arrow.up" accessibilityDescription:@"Send"];
@@ -184,15 +214,18 @@ typedef NS_ENUM(NSInteger, ChatMessageType) {
     self.stopButton.contentTintColor = [NSColor whiteColor];
     [inputContainer addSubview:self.stopButton];
 
-    // Settings button (gear icon)
-    self.settingsButton = [NSButton buttonWithImage:[NSImage imageWithSystemSymbolName:@"gearshape" accessibilityDescription:@"Settings"]
-                                             target:self
-                                             action:@selector(showSettings:)];
-    self.settingsButton.translatesAutoresizingMaskIntoConstraints = NO;
-    self.settingsButton.bezelStyle = NSBezelStyleRounded;
-    self.settingsButton.bordered = NO;
-    self.settingsButton.contentTintColor = [NSColor colorWithWhite:0.6 alpha:1.0];
-    [inputContainer addSubview:self.settingsButton];
+    // Model selector dropdown (styled lighter like status label)
+    self.modelSelector = [[NSPopUpButton alloc] initWithFrame:NSZeroRect pullsDown:NO];
+    self.modelSelector.translatesAutoresizingMaskIntoConstraints = NO;
+    self.modelSelector.target = self;
+    self.modelSelector.action = @selector(modelChanged:);
+    self.modelSelector.font = [NSFont systemFontOfSize:11];
+    self.modelSelector.controlSize = NSControlSizeSmall;
+    self.modelSelector.bordered = NO;
+    self.modelSelector.contentTintColor = [NSColor colorWithWhite:0.6 alpha:1.0];
+    [[self.modelSelector cell] setArrowPosition:NSPopUpArrowAtBottom];
+    [self populateModelSelector];
+    [inputContainer addSubview:self.modelSelector];
 
     // Loading indicator
     self.loadingIndicator = [[NSProgressIndicator alloc] initWithFrame:NSZeroRect];
@@ -219,10 +252,10 @@ typedef NS_ENUM(NSInteger, ChatMessageType) {
     NSDictionary *views = @{
         @"chat": self.chatScrollView,
         @"input": inputContainer,
-        @"field": self.inputField,
+        @"inputScroll": self.inputScrollView,
         @"send": self.sendButton,
         @"stop": self.stopButton,
-        @"settings": self.settingsButton,
+        @"model": self.modelSelector,
         @"loading": self.loadingIndicator,
         @"status": self.statusLabel,
         @"stack": self.chatStackView,
@@ -236,38 +269,61 @@ typedef NS_ENUM(NSInteger, ChatMessageType) {
     [NSLayoutConstraint activateConstraints:
      [NSLayoutConstraint constraintsWithVisualFormat:@"H:|[input]|"
                                              options:0 metrics:nil views:views]];
-    [NSLayoutConstraint activateConstraints:
-     [NSLayoutConstraint constraintsWithVisualFormat:@"V:|[chat][input(==80)]|"
-                                             options:0 metrics:nil views:views]];
 
-    // Input container layout
-    [NSLayoutConstraint activateConstraints:
-     [NSLayoutConstraint constraintsWithVisualFormat:@"H:|-10-[field]-8-[loading(20)]-8-[send(28)]-8-[settings(24)]-10-|"
-                                             options:NSLayoutFormatAlignAllCenterY
-                                             metrics:nil views:views]];
-    // Send and stop button size (circular)
+    // Input container height constraint (dynamic, starts at 80)
+    self.inputContainerHeightConstraint = [inputContainer.heightAnchor constraintEqualToConstant:80];
+    self.inputContainerHeightConstraint.active = YES;
+
     [NSLayoutConstraint activateConstraints:@[
-        [self.sendButton.heightAnchor constraintEqualToConstant:28],
-        [self.stopButton.widthAnchor constraintEqualToConstant:28],
-        [self.stopButton.heightAnchor constraintEqualToConstant:28]
+        [self.chatScrollView.topAnchor constraintEqualToAnchor:contentView.topAnchor],
+        [self.chatScrollView.bottomAnchor constraintEqualToAnchor:inputContainer.topAnchor],
+        [inputContainer.bottomAnchor constraintEqualToAnchor:contentView.bottomAnchor]
     ]];
+
+    // Input scroll view layout - takes most of the top area
+    [NSLayoutConstraint activateConstraints:@[
+        [self.inputScrollView.leadingAnchor constraintEqualToAnchor:inputContainer.leadingAnchor constant:10],
+        [self.inputScrollView.topAnchor constraintEqualToAnchor:inputContainer.topAnchor constant:10],
+        [self.inputScrollView.trailingAnchor constraintEqualToAnchor:self.loadingIndicator.leadingAnchor constant:-8]
+    ]];
+
+    // Placeholder label positioned inside the text view area
+    [NSLayoutConstraint activateConstraints:@[
+        [self.placeholderLabel.leadingAnchor constraintEqualToAnchor:self.inputScrollView.leadingAnchor constant:12],
+        [self.placeholderLabel.topAnchor constraintEqualToAnchor:self.inputScrollView.topAnchor constant:6]
+    ]];
+
+    // Loading indicator and send button on the right, vertically centered with input
+    [NSLayoutConstraint activateConstraints:@[
+        [self.loadingIndicator.trailingAnchor constraintEqualToAnchor:self.sendButton.leadingAnchor constant:-8],
+        [self.loadingIndicator.centerYAnchor constraintEqualToAnchor:self.inputScrollView.centerYAnchor],
+        [self.loadingIndicator.heightAnchor constraintEqualToConstant:20],
+        [self.loadingIndicator.widthAnchor constraintEqualToConstant:20]
+    ]];
+
+    [NSLayoutConstraint activateConstraints:@[
+        [self.sendButton.trailingAnchor constraintEqualToAnchor:inputContainer.trailingAnchor constant:-10],
+        [self.sendButton.centerYAnchor constraintEqualToAnchor:self.inputScrollView.centerYAnchor],
+        [self.sendButton.widthAnchor constraintEqualToConstant:28],
+        [self.sendButton.heightAnchor constraintEqualToConstant:28]
+    ]];
+
     // Stop button overlays the send button position
     [NSLayoutConstraint activateConstraints:@[
+        [self.stopButton.widthAnchor constraintEqualToConstant:28],
+        [self.stopButton.heightAnchor constraintEqualToConstant:28],
         [self.stopButton.centerXAnchor constraintEqualToAnchor:self.sendButton.centerXAnchor],
         [self.stopButton.centerYAnchor constraintEqualToAnchor:self.sendButton.centerYAnchor]
     ]];
+
+    // Bottom row: status on left, model selector on right
     [NSLayoutConstraint activateConstraints:@[
-        [self.settingsButton.heightAnchor constraintEqualToConstant:24]
-    ]];
-    [NSLayoutConstraint activateConstraints:
-     [NSLayoutConstraint constraintsWithVisualFormat:@"H:|-10-[status]-10-|"
-                                             options:0 metrics:nil views:views]];
-    [NSLayoutConstraint activateConstraints:
-     [NSLayoutConstraint constraintsWithVisualFormat:@"V:|-10-[field(28)]-4-[status]-10-|"
-                                             options:0 metrics:nil views:views]];
-    [NSLayoutConstraint activateConstraints:@[
-        [self.loadingIndicator.heightAnchor constraintEqualToConstant:20],
-        [self.loadingIndicator.widthAnchor constraintEqualToConstant:20]
+        [self.statusLabel.leadingAnchor constraintEqualToAnchor:inputContainer.leadingAnchor constant:10],
+        [self.statusLabel.topAnchor constraintEqualToAnchor:self.inputScrollView.bottomAnchor constant:4],
+        [self.statusLabel.bottomAnchor constraintEqualToAnchor:inputContainer.bottomAnchor constant:-10],
+        [self.modelSelector.trailingAnchor constraintEqualToAnchor:inputContainer.trailingAnchor constant:-10],
+        [self.modelSelector.centerYAnchor constraintEqualToAnchor:self.statusLabel.centerYAnchor],
+        [self.statusLabel.trailingAnchor constraintLessThanOrEqualToAnchor:self.modelSelector.leadingAnchor constant:-10]
     ]];
 
     // Document view constraints
@@ -300,7 +356,7 @@ typedef NS_ENUM(NSInteger, ChatMessageType) {
     if (!apiKey) {
         [self addSystemMessage:@"No Gemini API key found. Please set GEMINI_API_KEY environment variable "
                                "or add it to ~/Library/Application Support/mcpwa/config.json"];
-        self.inputField.enabled = NO;
+        self.inputTextView.editable = NO;
         self.sendButton.enabled = NO;
         return;
     }
@@ -318,7 +374,7 @@ typedef NS_ENUM(NSInteger, ChatMessageType) {
 
         [strongSelf executeMCPTool:call.name args:call.args completion:^(NSString *result) {
             // Show function result in chat only if debug mode is enabled
-            if (strongSelf.showDebugInfo) {
+            if ([DebugConfigWindowController showDebugInChatEnabled]) {
                 [strongSelf addFunctionMessage:call.name result:result];
             }
             completion(result);
@@ -469,7 +525,7 @@ typedef NS_ENUM(NSInteger, ChatMessageType) {
 
 - (void)showWindow {
     [self.window makeKeyAndOrderFront:nil];
-    [self.window makeFirstResponder:self.inputField];
+    [self.window makeFirstResponder:self.inputTextView];
 }
 
 - (void)hideWindow {
@@ -488,37 +544,9 @@ typedef NS_ENUM(NSInteger, ChatMessageType) {
     return self.window.isVisible;
 }
 
-#pragma mark - Settings
+#pragma mark - Model Selection
 
-- (void)showSettings:(id)sender {
-    if (self.settingsPopover.isShown) {
-        [self.settingsPopover close];
-        return;
-    }
-
-    // Create popover if needed
-    if (!self.settingsPopover) {
-        self.settingsPopover = [[NSPopover alloc] init];
-        self.settingsPopover.behavior = NSPopoverBehaviorTransient;
-        self.settingsPopover.delegate = self;
-    }
-
-    // Create settings view
-    NSView *settingsView = [[NSView alloc] initWithFrame:NSMakeRect(0, 0, 250, 100)];
-
-    // Model selection label
-    NSTextField *modelLabel = [NSTextField labelWithString:@"Model:"];
-    modelLabel.translatesAutoresizingMaskIntoConstraints = NO;
-    modelLabel.font = [NSFont systemFontOfSize:12];
-    [settingsView addSubview:modelLabel];
-
-    // Model popup button
-    self.modelSelector = [[NSPopUpButton alloc] initWithFrame:NSZeroRect pullsDown:NO];
-    self.modelSelector.translatesAutoresizingMaskIntoConstraints = NO;
-    self.modelSelector.target = self;
-    self.modelSelector.action = @selector(modelChanged:);
-
-    // Populate models
+- (void)populateModelSelector {
     [self.modelSelector removeAllItems];
     for (NSString *modelId in [GeminiClient availableModels]) {
         NSString *displayName = [GeminiClient displayNameForModel:modelId];
@@ -530,45 +558,6 @@ typedef NS_ENUM(NSInteger, ChatMessageType) {
             [self.modelSelector selectItem:self.modelSelector.lastItem];
         }
     }
-    [settingsView addSubview:self.modelSelector];
-
-    // Debug toggle label
-    NSTextField *debugLabel = [NSTextField labelWithString:@"Show debug info:"];
-    debugLabel.translatesAutoresizingMaskIntoConstraints = NO;
-    debugLabel.font = [NSFont systemFontOfSize:12];
-    [settingsView addSubview:debugLabel];
-
-    // Debug toggle switch
-    self.debugToggle = [NSButton checkboxWithTitle:@"" target:self action:@selector(debugToggled:)];
-    self.debugToggle.translatesAutoresizingMaskIntoConstraints = NO;
-    self.debugToggle.state = self.showDebugInfo ? NSControlStateValueOn : NSControlStateValueOff;
-    [settingsView addSubview:self.debugToggle];
-
-    // Layout
-    [NSLayoutConstraint activateConstraints:@[
-        [modelLabel.leadingAnchor constraintEqualToAnchor:settingsView.leadingAnchor constant:15],
-        [modelLabel.topAnchor constraintEqualToAnchor:settingsView.topAnchor constant:15],
-
-        [self.modelSelector.leadingAnchor constraintEqualToAnchor:modelLabel.trailingAnchor constant:10],
-        [self.modelSelector.trailingAnchor constraintEqualToAnchor:settingsView.trailingAnchor constant:-15],
-        [self.modelSelector.centerYAnchor constraintEqualToAnchor:modelLabel.centerYAnchor],
-
-        [debugLabel.leadingAnchor constraintEqualToAnchor:settingsView.leadingAnchor constant:15],
-        [debugLabel.topAnchor constraintEqualToAnchor:modelLabel.bottomAnchor constant:20],
-
-        [self.debugToggle.leadingAnchor constraintEqualToAnchor:debugLabel.trailingAnchor constant:10],
-        [self.debugToggle.centerYAnchor constraintEqualToAnchor:debugLabel.centerYAnchor]
-    ]];
-
-    // Create view controller for popover
-    NSViewController *vc = [[NSViewController alloc] init];
-    vc.view = settingsView;
-    self.settingsPopover.contentViewController = vc;
-
-    // Show popover
-    [self.settingsPopover showRelativeToRect:self.settingsButton.bounds
-                                      ofView:self.settingsButton
-                               preferredEdge:NSRectEdgeMaxY];
 }
 
 - (void)modelChanged:(NSPopUpButton *)sender {
@@ -585,12 +574,9 @@ typedef NS_ENUM(NSInteger, ChatMessageType) {
     }
 }
 
-- (void)debugToggled:(NSButton *)sender {
-    self.showDebugInfo = (sender.state == NSControlStateValueOn);
-    [[NSUserDefaults standardUserDefaults] setBool:self.showDebugInfo forKey:@"GeminiShowDebugInfo"];
-
-    NSString *status = self.showDebugInfo ? @"Debug info enabled" : @"Debug info disabled";
-    [self updateStatus:status];
+- (void)showSettings:(id)sender {
+    // Open the debug configuration window instead
+    [[DebugConfigWindowController sharedController] showWindow];
 }
 
 #pragma mark - Message Display
@@ -683,6 +669,85 @@ typedef NS_ENUM(NSInteger, ChatMessageType) {
         while (i < len) {
             unichar c = [line characterAtIndex:i];
 
+            // Check for markdown link [text](url)
+            if (c == '[') {
+                NSUInteger textStart = i + 1;
+                NSUInteger textEnd = textStart;
+                // Find closing ]
+                while (textEnd < len && [line characterAtIndex:textEnd] != ']') {
+                    textEnd++;
+                }
+                // Check for ( immediately after ]
+                if (textEnd < len && textEnd + 1 < len && [line characterAtIndex:textEnd + 1] == '(') {
+                    NSUInteger urlStart = textEnd + 2;
+                    NSUInteger urlEnd = urlStart;
+                    // Find closing )
+                    while (urlEnd < len && [line characterAtIndex:urlEnd] != ')') {
+                        urlEnd++;
+                    }
+                    if (urlEnd < len && urlEnd > urlStart && textEnd > textStart) {
+                        // Valid markdown link found
+                        NSString *linkText = [line substringWithRange:NSMakeRange(textStart, textEnd - textStart)];
+                        NSString *urlString = [line substringWithRange:NSMakeRange(urlStart, urlEnd - urlStart)];
+                        NSURL *url = [NSURL URLWithString:urlString];
+                        if (url) {
+                            NSMutableDictionary *linkAttrs = [NSMutableDictionary dictionaryWithDictionary:@{
+                                NSFontAttributeName: lineFont,
+                                NSForegroundColorAttributeName: [NSColor linkColor],
+                                NSUnderlineStyleAttributeName: @(NSUnderlineStyleSingle),
+                                NSLinkAttributeName: url
+                            }];
+                            NSAttributedString *linkAttr = [[NSAttributedString alloc] initWithString:linkText attributes:linkAttrs];
+                            [lineAttr appendAttributedString:linkAttr];
+                            i = urlEnd + 1;
+                            continue;
+                        }
+                    }
+                }
+                // Not a valid markdown link, treat [ as regular character
+            }
+
+            // Check for bare URL (https:// or http://)
+            if (c == 'h' && i + 7 < len) {
+                NSString *remaining = [line substringFromIndex:i];
+                if ([remaining hasPrefix:@"https://"] || [remaining hasPrefix:@"http://"]) {
+                    // Find end of URL (space, newline, or end of string)
+                    NSUInteger urlEnd = i;
+                    while (urlEnd < len) {
+                        unichar uc = [line characterAtIndex:urlEnd];
+                        if (uc == ' ' || uc == '\t' || uc == '\n' || uc == ')' || uc == ']' || uc == '>' || uc == '"' || uc == '\'') {
+                            break;
+                        }
+                        urlEnd++;
+                    }
+                    // Remove trailing punctuation that's likely not part of URL
+                    while (urlEnd > i) {
+                        unichar lastChar = [line characterAtIndex:urlEnd - 1];
+                        if (lastChar == '.' || lastChar == ',' || lastChar == ';' || lastChar == ':' || lastChar == '!' || lastChar == '?') {
+                            urlEnd--;
+                        } else {
+                            break;
+                        }
+                    }
+                    if (urlEnd > i) {
+                        NSString *urlString = [line substringWithRange:NSMakeRange(i, urlEnd - i)];
+                        NSURL *url = [NSURL URLWithString:urlString];
+                        if (url) {
+                            NSMutableDictionary *linkAttrs = [NSMutableDictionary dictionaryWithDictionary:@{
+                                NSFontAttributeName: lineFont,
+                                NSForegroundColorAttributeName: [NSColor linkColor],
+                                NSUnderlineStyleAttributeName: @(NSUnderlineStyleSingle),
+                                NSLinkAttributeName: url
+                            }];
+                            NSAttributedString *linkAttr = [[NSAttributedString alloc] initWithString:urlString attributes:linkAttrs];
+                            [lineAttr appendAttributedString:linkAttr];
+                            i = urlEnd;
+                            continue;
+                        }
+                    }
+                }
+            }
+
             // Check for bold (**) or italic (*)
             if (c == '*') {
                 // Check for bold **
@@ -749,16 +814,28 @@ typedef NS_ENUM(NSInteger, ChatMessageType) {
             }
 
             // Regular character - collect consecutive regular chars for efficiency
+            // Stop at formatting characters: *, [, and h (for potential URLs)
             NSUInteger start = i;
-            while (i < len && [line characterAtIndex:i] != '*') {
+            while (i < len) {
+                unichar rc = [line characterAtIndex:i];
+                if (rc == '*' || rc == '[') break;
+                // Check for potential URL start
+                if (rc == 'h' && i + 7 < len) {
+                    NSString *potentialUrl = [line substringFromIndex:i];
+                    if ([potentialUrl hasPrefix:@"https://"] || [potentialUrl hasPrefix:@"http://"]) {
+                        break;
+                    }
+                }
                 i++;
             }
-            NSString *regularText = [line substringWithRange:NSMakeRange(start, i - start)];
-            NSAttributedString *regularAttr = [[NSAttributedString alloc] initWithString:regularText attributes:@{
-                NSFontAttributeName: lineFont,
-                NSForegroundColorAttributeName: textColor
-            }];
-            [lineAttr appendAttributedString:regularAttr];
+            if (i > start) {
+                NSString *regularText = [line substringWithRange:NSMakeRange(start, i - start)];
+                NSAttributedString *regularAttr = [[NSAttributedString alloc] initWithString:regularText attributes:@{
+                    NSFontAttributeName: lineFont,
+                    NSForegroundColorAttributeName: textColor
+                }];
+                [lineAttr appendAttributedString:regularAttr];
+            }
         }
 
         [result appendAttributedString:lineAttr];
@@ -826,6 +903,13 @@ typedef NS_ENUM(NSInteger, ChatMessageType) {
     textView.textContainer.containerSize = NSMakeSize(326, CGFLOAT_MAX);
     textView.verticallyResizable = YES;
     textView.horizontallyResizable = NO;
+    // Enable clickable links
+    textView.automaticLinkDetectionEnabled = NO; // We handle links ourselves in markdown parser
+    [textView setLinkTextAttributes:@{
+        NSForegroundColorAttributeName: [NSColor linkColor],
+        NSUnderlineStyleAttributeName: @(NSUnderlineStyleSingle),
+        NSCursorAttributeName: [NSCursor pointingHandCursor]
+    }];
 
     if (useMarkdown) {
         [textView.textStorage setAttributedString:[self attributedStringFromMarkdown:displayText textColor:textColor]];
@@ -914,7 +998,7 @@ typedef NS_ENUM(NSInteger, ChatMessageType) {
 
 - (void)setProcessing:(BOOL)processing {
     self.isProcessing = processing;
-    self.inputField.enabled = !processing;
+    self.inputTextView.editable = !processing;
 
     // Toggle between send and stop buttons
     self.sendButton.hidden = processing;
@@ -930,11 +1014,13 @@ typedef NS_ENUM(NSInteger, ChatMessageType) {
 #pragma mark - Actions
 
 - (void)sendMessage:(id)sender {
-    NSString *text = self.inputField.stringValue;
+    NSString *text = [self.inputTextView.string stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
     if (text.length == 0 || self.isProcessing) return;
 
     self.isCancelled = NO;
-    self.inputField.stringValue = @"";
+    self.inputTextView.string = @"";
+    [self updatePlaceholder];
+    [self updateInputHeight];
     [self addUserMessage:text];
     [self setProcessing:YES];
     [self updateStatus:@"Thinking..."];
@@ -971,12 +1057,15 @@ typedef NS_ENUM(NSInteger, ChatMessageType) {
     WAAccessibility *wa = [WAAccessibility shared];
 
     // Log tool execution start
-    NSLog(@"[MCP] Starting tool: %@", name);
+    [WALogger info:@"[MCP] Tool call: %@", name];
+    if (args.count > 0) {
+        [WALogger debug:@"[MCP]   Args: %@", args];
+    }
 
     dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
         // Check cancellation at start of background task
         if (self.isCancelled) {
-            NSLog(@"[MCP] Tool %@ cancelled before execution", name);
+            [WALogger debug:@"[MCP] Tool %@ cancelled before execution", name];
             return;
         }
 
@@ -1020,20 +1109,28 @@ typedef NS_ENUM(NSInteger, ChatMessageType) {
             }
         } @catch (NSException *exception) {
             result = [NSString stringWithFormat:@"Error: %@", exception.reason];
-            NSLog(@"[MCP] Tool %@ exception: %@", name, exception.reason);
+            [WALogger error:@"[MCP] Tool %@ exception: %@", name, exception.reason];
         }
 
         NSTimeInterval elapsed = [[NSDate date] timeIntervalSinceDate:startTime];
-        NSLog(@"[MCP] Tool %@ completed in %.2fs, result length: %lu", name, elapsed, (unsigned long)result.length);
+        [WALogger info:@"[MCP] Tool %@ completed (%.2fs)", name, elapsed];
+
+        // Log full result for debugging (split into lines for readability)
+        [WALogger debug:@"[MCP]   Result:"];
+        // Split result into lines and log each
+        NSArray *lines = [result componentsSeparatedByString:@"\n"];
+        for (NSString *line in lines) {
+            if (line.length > 0) {
+                [WALogger debug:@"[MCP]     %@", line];
+            }
+        }
 
         // Only call completion if not cancelled
         dispatch_async(dispatch_get_main_queue(), ^{
             if (!self.isCancelled) {
-                NSLog(@"[MCP] Calling completion for %@", name);
                 completion(result);
-                NSLog(@"[MCP] Completion called for %@", name);
             } else {
-                NSLog(@"[MCP] Tool %@ cancelled, skipping completion", name);
+                [WALogger debug:@"[MCP] Tool %@ cancelled, skipping completion", name];
             }
         });
     });
@@ -1344,7 +1441,7 @@ typedef NS_ENUM(NSInteger, ChatMessageType) {
         NSLog(@"[Gemini] Function %@ returned, sending result to Gemini", call.name);
 
         // Show function result in chat only if debug mode is enabled
-        if (self.showDebugInfo) {
+        if ([DebugConfigWindowController showDebugInChatEnabled]) {
             [self addFunctionMessage:call.name result:result];
         }
 
@@ -1354,14 +1451,61 @@ typedef NS_ENUM(NSInteger, ChatMessageType) {
     }];
 }
 
-#pragma mark - NSTextFieldDelegate
+#pragma mark - NSTextViewDelegate
 
-- (BOOL)control:(NSControl *)control textView:(NSTextView *)textView doCommandBySelector:(SEL)commandSelector {
+- (BOOL)textView:(NSTextView *)textView doCommandBySelector:(SEL)commandSelector {
     if (commandSelector == @selector(insertNewline:)) {
+        // Shift+Enter or Option+Enter inserts a newline, plain Enter sends
+        NSEvent *event = [NSApp currentEvent];
+        if (event.modifierFlags & (NSEventModifierFlagShift | NSEventModifierFlagOption)) {
+            return NO; // Let the text view handle it (insert newline)
+        }
         [self sendMessage:nil];
         return YES;
     }
     return NO;
+}
+
+- (void)textDidChange:(NSNotification *)notification {
+    [self updatePlaceholder];
+    [self updateInputHeight];
+}
+
+- (void)updatePlaceholder {
+    // Show/hide placeholder based on text content
+    self.placeholderLabel.hidden = (self.inputTextView.string.length > 0);
+}
+
+- (void)updateInputHeight {
+    // Calculate required height for the text
+    NSLayoutManager *layoutManager = self.inputTextView.layoutManager;
+    NSTextContainer *textContainer = self.inputTextView.textContainer;
+
+    [layoutManager ensureLayoutForTextContainer:textContainer];
+    NSRect usedRect = [layoutManager usedRectForTextContainer:textContainer];
+
+    // Account for text container insets
+    CGFloat textHeight = ceil(usedRect.size.height) + self.inputTextView.textContainerInset.height * 2;
+
+    // Minimum height of one line (~28), maximum of ~150 (about 6 lines)
+    CGFloat minTextHeight = 28;
+    CGFloat maxTextHeight = 150;
+    CGFloat clampedTextHeight = MAX(minTextHeight, MIN(maxTextHeight, textHeight));
+
+    // Calculate total input container height (text area + bottom row for status/model)
+    CGFloat bottomRowHeight = 30; // status label + padding
+    CGFloat padding = 20; // top and bottom padding
+    CGFloat newContainerHeight = clampedTextHeight + bottomRowHeight + padding;
+
+    // Only animate if height changed
+    if (fabs(self.inputContainerHeightConstraint.constant - newContainerHeight) > 1) {
+        [NSAnimationContext runAnimationGroup:^(NSAnimationContext *context) {
+            context.duration = 0.15;
+            context.allowsImplicitAnimation = YES;
+            self.inputContainerHeightConstraint.constant = newContainerHeight;
+            [self.window layoutIfNeeded];
+        } completionHandler:nil];
+    }
 }
 
 @end

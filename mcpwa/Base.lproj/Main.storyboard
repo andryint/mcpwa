@@ -350,6 +350,13 @@
                                                 <action selector="debugScrollChatsUp:" target="Voe-Tx-rLC" id="scr-cht-up-act"/>
                                             </connections>
                                         </menuItem>
+                                        <menuItem isSeparatorItem="YES" id="dbg-cfg-sep"/>
+                                        <menuItem title="Debug Configuration..." keyEquivalent="d" id="dbg-cfg-001" userLabel="Debug Configuration">
+                                            <modifierMask key="keyEquivalentModifierMask" option="YES" shift="YES" command="YES"/>
+                                            <connections>
+                                                <action selector="showDebugConfig:" target="Voe-Tx-rLC" id="dbg-cfg-act"/>
+                                            </connections>
+                                        </menuItem>
                                     </items>
                                 </menu>
                             </menuItem>
