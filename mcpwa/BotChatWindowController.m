@@ -14,7 +14,7 @@
 // Claude-style light mode colors
 // User bubble: warm beige/tan (Claude style)
 #define kUserBubbleColorLight [NSColor colorWithRed:0.91 green:0.87 blue:0.82 alpha:1.0]  // #E8DDD2
-#define kUserBubbleColorDark [NSColor colorWithRed:0.35 green:0.32 blue:0.28 alpha:1.0]   // Dark mode variant
+#define kUserBubbleColorDark [NSColor colorWithWhite:0.22 alpha:1.0]                       // Dark charcoal (matches reference)
 
 // Bot bubble: white with subtle appearance (Claude style)
 #define kBotBubbleColorLight [NSColor colorWithRed:1.0 green:1.0 blue:1.0 alpha:1.0]      // Pure white
@@ -37,9 +37,12 @@
 #define kSecondaryTextColorLight [NSColor colorWithRed:0.45 green:0.42 blue:0.4 alpha:1.0]
 #define kSecondaryTextColorDark [NSColor colorWithWhite:0.6 alpha:1.0]
 
-// Helper to check if current appearance is dark
+// Global reference for color helpers (set when window is created)
+static NSWindow *_colorReferenceWindow = nil;
+
+// Helper to check if current appearance is dark (based on app's theme setting)
 static inline BOOL isDarkMode(void) {
-    NSAppearance *appearance = [NSApp effectiveAppearance];
+    NSAppearance *appearance = _colorReferenceWindow ? _colorReferenceWindow.effectiveAppearance : [NSApp effectiveAppearance];
     if (@available(macOS 10.14, *)) {
         NSAppearanceName name = [appearance bestMatchFromAppearancesWithNames:@[NSAppearanceNameAqua, NSAppearanceNameDarkAqua]];
         return [name isEqualToString:NSAppearanceNameDarkAqua];
@@ -115,6 +118,7 @@ typedef NS_ENUM(NSInteger, ChatMessageType) {
 @property (nonatomic, strong) NSPopUpButton *modelSelector;
 @property (nonatomic, assign) BOOL hasTitleBeenGenerated;
 @property (nonatomic, copy) NSString *firstUserMessage;
+@property (nonatomic, strong) NSView *inputContainer;
 @end
 
 @implementation BotChatWindowController
@@ -135,13 +139,93 @@ typedef NS_ENUM(NSInteger, ChatMessageType) {
         [self setupWindow];
         [self setupGeminiClient];
         [self loadMCPTools];
+
+        // Listen to theme change notification from Settings
+        [[NSNotificationCenter defaultCenter] addObserver:self
+                                                 selector:@selector(themeDidChange:)
+                                                     name:WAThemeDidChangeNotification
+                                                   object:nil];
     }
     return self;
 }
 
+- (void)dealloc {
+    [[NSNotificationCenter defaultCenter] removeObserver:self];
+}
+
+- (void)themeDidChange:(NSNotification *)notification {
+    dispatch_async(dispatch_get_main_queue(), ^{
+        [self updateColorsForAppearance];
+    });
+}
+
+- (void)updateColorsForAppearance {
+    // Update window background
+    self.window.backgroundColor = backgroundColor();
+
+    // Update content view
+    NSView *contentView = self.window.contentView;
+    contentView.layer.backgroundColor = backgroundColor().CGColor;
+
+    // Update title bar
+    self.titleBarView.layer.backgroundColor = backgroundColor().CGColor;
+    self.titleLabel.textColor = primaryTextColor();
+
+    // Update chat scroll view
+    self.chatScrollView.backgroundColor = backgroundColor();
+
+    // Update input container
+    self.inputContainer.layer.backgroundColor = inputBackgroundColor().CGColor;
+
+    // Update status label
+    self.statusLabel.textColor = secondaryTextColor();
+
+    // Update placeholder
+    self.placeholderLabel.textColor = secondaryTextColor();
+
+    // Update input text view - background, text color, and border
+    self.inputTextView.textColor = primaryTextColor();
+    self.inputTextView.insertionPointColor = primaryTextColor();
+    if (isDarkMode()) {
+        self.inputTextView.backgroundColor = [NSColor colorWithWhite:0.18 alpha:1.0];
+        self.inputTextView.layer.borderWidth = 0;
+        self.inputTextView.layer.borderColor = nil;
+    } else {
+        self.inputTextView.backgroundColor = [NSColor whiteColor];
+        self.inputTextView.layer.borderWidth = 1.0;
+        self.inputTextView.layer.borderColor = [NSColor colorWithWhite:0.85 alpha:1.0].CGColor;
+    }
+
+    // Update send/stop button colors
+    NSColor *accentColor = isDarkMode() ?
+        [NSColor colorWithRed:0.85 green:0.75 blue:0.65 alpha:1.0] :
+        [NSColor colorWithRed:0.45 green:0.38 blue:0.32 alpha:1.0];
+    self.sendButton.layer.backgroundColor = accentColor.CGColor;
+    self.stopButton.layer.backgroundColor = accentColor.CGColor;
+
+    // Rebuild all chat messages to update bubble colors
+    [self rebuildChatMessages];
+
+    // Force redraw
+    [self.window.contentView setNeedsDisplay:YES];
+}
+
+- (void)rebuildChatMessages {
+    // Remove all existing bubble views
+    for (NSView *view in [self.chatStackView.arrangedSubviews copy]) {
+        [self.chatStackView removeArrangedSubview:view];
+        [view removeFromSuperview];
+    }
+
+    // Re-add all messages with updated colors
+    for (ChatDisplayMessage *message in self.messages) {
+        [self addMessageBubble:message];
+    }
+}
+
 - (void)setupWindow {
-    // Create window
-    NSRect frame = NSMakeRect(0, 0, 500, 600);
+    // Create window - 50% larger default size (750x900 vs 500x600)
+    NSRect frame = NSMakeRect(0, 0, 750, 900);
     NSWindowStyleMask style = NSWindowStyleMaskTitled |
                               NSWindowStyleMaskClosable |
                               NSWindowStyleMaskMiniaturizable |
@@ -154,8 +238,20 @@ typedef NS_ENUM(NSInteger, ChatMessageType) {
                                                        defer:NO];
     window.title = @"WhatsApp Bot Chat";
     window.minSize = NSMakeSize(400, 400);
+
+    // Enable automatic save/restore of window position and size
+    window.frameAutosaveName = @"BotChatWindow";
+
+    // Apply current theme appearance from Settings
+    window.appearance = [SettingsWindowController effectiveAppearance];
+    _colorReferenceWindow = window;
+
     window.backgroundColor = backgroundColor();
-    [window center];
+
+    // Only center if no saved position (frameAutosaveName will restore if available)
+    if (![[NSUserDefaults standardUserDefaults] objectForKey:@"NSWindow Frame BotChatWindow"]) {
+        [window center];
+    }
 
     // Use smaller traffic light buttons (like Claude app)
     window.titlebarAppearsTransparent = YES;
@@ -249,6 +345,7 @@ typedef NS_ENUM(NSInteger, ChatMessageType) {
     inputContainer.wantsLayer = YES;
     inputContainer.layer.backgroundColor = inputBackgroundColor().CGColor;
     [contentView addSubview:inputContainer];
+    self.inputContainer = inputContainer;
 
     // Input scroll view (wraps the text view for multi-line input)
     self.inputScrollView = [[NSScrollView alloc] initWithFrame:NSZeroRect];
@@ -439,7 +536,7 @@ typedef NS_ENUM(NSInteger, ChatMessageType) {
 
     // Bottom row: status on left, model selector on right
     [NSLayoutConstraint activateConstraints:@[
-        [self.statusLabel.leadingAnchor constraintEqualToAnchor:inputContainer.leadingAnchor constant:10],
+        [self.statusLabel.leadingAnchor constraintEqualToAnchor:inputContainer.leadingAnchor constant:20],
         [self.statusLabel.topAnchor constraintEqualToAnchor:self.inputScrollView.bottomAnchor constant:4],
         [self.statusLabel.bottomAnchor constraintEqualToAnchor:inputContainer.bottomAnchor constant:-10],
         [self.modelSelector.trailingAnchor constraintEqualToAnchor:inputContainer.trailingAnchor constant:-10],
@@ -491,7 +588,7 @@ typedef NS_ENUM(NSInteger, ChatMessageType) {
         __strong typeof(weakSelf) strongSelf = weakSelf;
         if (!strongSelf) return;
 
-        [strongSelf updateStatus:[NSString stringWithFormat:@"Calling %@...", call.name]];
+        [strongSelf updateStatus:[strongSelf friendlyStatusForTool:call.name]];
 
         [strongSelf executeMCPTool:call.name args:call.args completion:^(NSString *result) {
             // Show function result in chat only if debug mode is enabled
@@ -511,8 +608,7 @@ typedef NS_ENUM(NSInteger, ChatMessageType) {
     // Update model selector to reflect the loaded preference
     [self selectModelInSelector:self.geminiClient.model];
 
-    NSString *displayName = [GeminiClient displayNameForModel:self.geminiClient.model];
-    [self updateStatus:[NSString stringWithFormat:@"Ready (%@)", displayName]];
+    [self updateStatus:@"Ready"];
 }
 
 - (void)loadMCPTools {
@@ -695,7 +791,7 @@ typedef NS_ENUM(NSInteger, ChatMessageType) {
         [[NSUserDefaults standardUserDefaults] setObject:selectedModelId forKey:@"GeminiSelectedModel"];
 
         NSString *displayName = [GeminiClient displayNameForModel:selectedModelId];
-        [self updateStatus:[NSString stringWithFormat:@"Model: %@", displayName]];
+        [self updateStatus:@"Ready"];
 
         // Add system message about model change
         [self addSystemMessage:[NSString stringWithFormat:@"Switched to %@", displayName]];
@@ -780,9 +876,11 @@ typedef NS_ENUM(NSInteger, ChatMessageType) {
             lineFont = h1Font;
         }
 
-        // Handle bullet points
+        // Handle bullet points - detect and set up paragraph style
+        BOOL isBulletPoint = NO;
         if ([line hasPrefix:@"* "] || [line hasPrefix:@"- "]) {
-            line = [NSString stringWithFormat:@"• %@", [line substringFromIndex:2]];
+            line = [NSString stringWithFormat:@"•  %@", [line substringFromIndex:2]];
+            isBulletPoint = YES;
         }
 
         // Parse inline formatting character by character
@@ -960,6 +1058,15 @@ typedef NS_ENUM(NSInteger, ChatMessageType) {
                 }];
                 [lineAttr appendAttributedString:regularAttr];
             }
+        }
+
+        // Apply paragraph style for bullet points (hanging indent)
+        if (isBulletPoint && lineAttr.length > 0) {
+            NSMutableParagraphStyle *bulletStyle = [[NSMutableParagraphStyle alloc] init];
+            bulletStyle.headIndent = 20;        // Indent for wrapped lines
+            bulletStyle.firstLineHeadIndent = 0; // Bullet starts at left margin
+            bulletStyle.paragraphSpacing = 4;    // Small space after each bullet
+            [lineAttr addAttribute:NSParagraphStyleAttributeName value:bulletStyle range:NSMakeRange(0, lineAttr.length)];
         }
 
         [result appendAttributedString:lineAttr];
@@ -1154,6 +1261,29 @@ typedef NS_ENUM(NSInteger, ChatMessageType) {
 
 - (void)updateStatus:(NSString *)status {
     self.statusLabel.stringValue = status;
+}
+
+- (NSString *)friendlyStatusForTool:(NSString *)toolName {
+    // Map internal tool names to user-friendly status messages
+    static NSDictionary *friendlyNames = nil;
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        friendlyNames = @{
+            @"whatsapp_start_session": @"Connecting to WhatsApp...",
+            @"whatsapp_stop_session": @"Finishing up...",
+            @"whatsapp_status": @"Checking WhatsApp...",
+            @"whatsapp_list_chats": @"Loading chats...",
+            @"whatsapp_get_current_chat": @"Reading chat...",
+            @"whatsapp_open_chat": @"Opening chat...",
+            @"whatsapp_get_messages": @"Reading messages...",
+            @"whatsapp_send_message": @"Sending message...",
+            @"whatsapp_search": @"Searching chats...",
+            @"run_shell_command": @"Running command..."
+        };
+    });
+
+    NSString *friendly = friendlyNames[toolName];
+    return friendly ?: [NSString stringWithFormat:@"Processing..."];
 }
 
 - (void)setProcessing:(BOOL)processing {
@@ -1662,7 +1792,7 @@ typedef NS_ENUM(NSInteger, ChatMessageType) {
 
     GeminiFunctionCall *call = calls[index];
     NSLog(@"[Gemini] Processing function call %lu/%lu: %@", (unsigned long)(index + 1), (unsigned long)calls.count, call.name);
-    [self updateStatus:[NSString stringWithFormat:@"Calling %@...", call.name]];
+    [self updateStatus:[self friendlyStatusForTool:call.name]];
 
     [self executeMCPTool:call.name args:call.args completion:^(NSString *result) {
         NSLog(@"[Gemini] Function %@ returned, sending result to Gemini", call.name);
