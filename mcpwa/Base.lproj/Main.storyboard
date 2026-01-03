@@ -128,6 +128,28 @@
                                     </items>
                                 </menu>
                             </menuItem>
+                            <menuItem title="View" id="view-mnu-001">
+                                <modifierMask key="keyEquivalentModifierMask"/>
+                                <menu key="submenu" title="View" id="view-sub-001">
+                                    <items>
+                                        <menuItem title="Zoom In" keyEquivalent="+" id="zoom-in-001">
+                                            <connections>
+                                                <action selector="zoomIn:" target="Ady-hI-5gd" id="zoom-in-act"/>
+                                            </connections>
+                                        </menuItem>
+                                        <menuItem title="Zoom Out" keyEquivalent="-" id="zoom-out-001">
+                                            <connections>
+                                                <action selector="zoomOut:" target="Ady-hI-5gd" id="zoom-out-act"/>
+                                            </connections>
+                                        </menuItem>
+                                        <menuItem title="Actual Size" keyEquivalent="0" id="zoom-def-001">
+                                            <connections>
+                                                <action selector="zoomToActualSize:" target="Ady-hI-5gd" id="zoom-def-act"/>
+                                            </connections>
+                                        </menuItem>
+                                    </items>
+                                </menu>
+                            </menuItem>
                             <menuItem title="Window" id="aUF-d1-5bR">
                                 <modifierMask key="keyEquivalentModifierMask"/>
                                 <menu key="submenu" title="Window" systemMenu="window" id="Td7-aD-5lo">

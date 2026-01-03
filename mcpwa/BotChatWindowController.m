@@ -97,6 +97,12 @@ typedef NS_ENUM(NSInteger, ChatMessageType) {
 
 #pragma mark - BotChatWindowController
 
+// Default and zoom font sizes
+static const CGFloat kDefaultFontSize = 14.0;
+static const CGFloat kMinFontSize = 10.0;
+static const CGFloat kMaxFontSize = 24.0;
+static const CGFloat kFontSizeStep = 2.0;
+
 @interface BotChatWindowController () <NSPopoverDelegate, NSTextViewDelegate>
 @property (nonatomic, strong) GeminiClient *geminiClient;
 @property (nonatomic, strong) NSMutableArray<ChatDisplayMessage *> *messages;
@@ -119,6 +125,7 @@ typedef NS_ENUM(NSInteger, ChatMessageType) {
 @property (nonatomic, assign) BOOL hasTitleBeenGenerated;
 @property (nonatomic, copy) NSString *firstUserMessage;
 @property (nonatomic, strong) NSView *inputContainer;
+@property (nonatomic, assign) CGFloat currentFontSize;
 @end
 
 @implementation BotChatWindowController
@@ -136,6 +143,11 @@ typedef NS_ENUM(NSInteger, ChatMessageType) {
     self = [super init];
     if (self) {
         _messages = [NSMutableArray array];
+
+        // Load saved font size or use default
+        CGFloat savedFontSize = [[NSUserDefaults standardUserDefaults] floatForKey:@"ChatFontSize"];
+        _currentFontSize = (savedFontSize >= kMinFontSize && savedFontSize <= kMaxFontSize) ? savedFontSize : kDefaultFontSize;
+
         [self setupWindow];
         [self setupGeminiClient];
         [self loadMCPTools];
@@ -221,6 +233,51 @@ typedef NS_ENUM(NSInteger, ChatMessageType) {
     for (ChatDisplayMessage *message in self.messages) {
         [self addMessageBubble:message];
     }
+}
+
+#pragma mark - Zoom Actions
+
+- (IBAction)zoomIn:(id)sender {
+    if (self.currentFontSize < kMaxFontSize) {
+        self.currentFontSize += kFontSizeStep;
+        [self applyFontSize];
+    }
+}
+
+- (IBAction)zoomOut:(id)sender {
+    if (self.currentFontSize > kMinFontSize) {
+        self.currentFontSize -= kFontSizeStep;
+        [self applyFontSize];
+    }
+}
+
+- (IBAction)zoomToActualSize:(id)sender {
+    self.currentFontSize = kDefaultFontSize;
+    [self applyFontSize];
+}
+
+- (void)applyFontSize {
+    // Save preference
+    [[NSUserDefaults standardUserDefaults] setFloat:self.currentFontSize forKey:@"ChatFontSize"];
+
+    // Update input text view font
+    self.inputTextView.font = [NSFont systemFontOfSize:self.currentFontSize];
+    self.placeholderLabel.font = [NSFont systemFontOfSize:self.currentFontSize];
+
+    // Rebuild chat messages with new font size
+    [self rebuildChatMessages];
+
+    // Update input height
+    [self updateInputHeight];
+}
+
+- (BOOL)validateMenuItem:(NSMenuItem *)menuItem {
+    if (menuItem.action == @selector(zoomIn:)) {
+        return self.currentFontSize < kMaxFontSize;
+    } else if (menuItem.action == @selector(zoomOut:)) {
+        return self.currentFontSize > kMinFontSize;
+    }
+    return YES;
 }
 
 - (void)setupWindow {
@@ -359,7 +416,7 @@ typedef NS_ENUM(NSInteger, ChatMessageType) {
     // Input text view (multi-line, expands vertically)
     self.inputTextView = [[NSTextView alloc] initWithFrame:NSMakeRect(0, 0, 300, 28)];
     self.inputTextView.delegate = self;
-    self.inputTextView.font = [NSFont systemFontOfSize:14];
+    self.inputTextView.font = [NSFont systemFontOfSize:self.currentFontSize];
     self.inputTextView.textColor = primaryTextColor();
     self.inputTextView.insertionPointColor = primaryTextColor();
     // Light mode: white input field with subtle border; Dark mode: dark background
@@ -390,7 +447,7 @@ typedef NS_ENUM(NSInteger, ChatMessageType) {
     // Placeholder label (overlays the text view when empty)
     self.placeholderLabel = [NSTextField labelWithString:@"Type a message..."];
     self.placeholderLabel.translatesAutoresizingMaskIntoConstraints = NO;
-    self.placeholderLabel.font = [NSFont systemFontOfSize:14];
+    self.placeholderLabel.font = [NSFont systemFontOfSize:self.currentFontSize];
     self.placeholderLabel.textColor = secondaryTextColor();
     self.placeholderLabel.backgroundColor = [NSColor clearColor];
     self.placeholderLabel.bezeled = NO;
@@ -845,13 +902,14 @@ typedef NS_ENUM(NSInteger, ChatMessageType) {
 - (NSAttributedString *)attributedStringFromMarkdown:(NSString *)markdown textColor:(NSColor *)textColor {
     NSMutableAttributedString *result = [[NSMutableAttributedString alloc] init];
 
-    NSFont *regularFont = [NSFont systemFontOfSize:14];
-    NSFont *boldFont = [NSFont boldSystemFontOfSize:14];
-    NSFont *italicFont = [NSFont fontWithDescriptor:[[regularFont fontDescriptor] fontDescriptorWithSymbolicTraits:NSFontDescriptorTraitItalic] size:14];
+    CGFloat fontSize = self.currentFontSize;
+    NSFont *regularFont = [NSFont systemFontOfSize:fontSize];
+    NSFont *boldFont = [NSFont boldSystemFontOfSize:fontSize];
+    NSFont *italicFont = [NSFont fontWithDescriptor:[[regularFont fontDescriptor] fontDescriptorWithSymbolicTraits:NSFontDescriptorTraitItalic] size:fontSize];
     if (!italicFont) italicFont = regularFont;
-    NSFont *h3Font = [NSFont boldSystemFontOfSize:16];
-    NSFont *h2Font = [NSFont boldSystemFontOfSize:18];
-    NSFont *h1Font = [NSFont boldSystemFontOfSize:20];
+    NSFont *h3Font = [NSFont boldSystemFontOfSize:fontSize + 2];
+    NSFont *h2Font = [NSFont boldSystemFontOfSize:fontSize + 4];
+    NSFont *h1Font = [NSFont boldSystemFontOfSize:fontSize + 6];
 
     NSDictionary *defaultAttrs = @{
         NSFontAttributeName: regularFont,
@@ -1154,8 +1212,34 @@ typedef NS_ENUM(NSInteger, ChatMessageType) {
 
     bubble.layer.cornerRadius = useBubbleStyle ? cornerRadius : 0;
 
-    // Create text view for selectable text with proper background handling
-    NSTextView *textView = [[NSTextView alloc] initWithFrame:NSMakeRect(0, 0, maxTextWidth, 20)];
+    // Build attributed string first to measure it properly
+    NSAttributedString *attributedText;
+    if (useMarkdown) {
+        attributedText = [self attributedStringFromMarkdown:displayText textColor:textColor];
+    } else {
+        CGFloat fontSize = self.currentFontSize;
+        NSFont *font = (message.type == ChatMessageTypeFunction) ?
+            [NSFont monospacedSystemFontOfSize:fontSize - 3 weight:NSFontWeightRegular] :
+            [NSFont systemFontOfSize:fontSize];
+        NSDictionary *attrs = @{
+            NSFontAttributeName: font,
+            NSForegroundColorAttributeName: textColor
+        };
+        attributedText = [[NSAttributedString alloc] initWithString:displayText attributes:attrs];
+    }
+
+    // Calculate text size using boundingRect - this is the most reliable method
+    NSRect boundingRect = [attributedText boundingRectWithSize:NSMakeSize(maxTextWidth, CGFLOAT_MAX)
+                                                       options:NSStringDrawingUsesLineFragmentOrigin | NSStringDrawingUsesFontLeading];
+    CGFloat textWidth = ceil(boundingRect.size.width);
+    CGFloat textHeight = ceil(boundingRect.size.height);
+
+    // Ensure minimum height based on font
+    CGFloat minHeight = ceil(self.currentFontSize * 1.5);
+    if (textHeight < minHeight) textHeight = minHeight;
+
+    // Create text view with calculated size
+    NSTextView *textView = [[NSTextView alloc] initWithFrame:NSMakeRect(0, 0, textWidth, textHeight)];
     textView.translatesAutoresizingMaskIntoConstraints = NO;
     textView.editable = NO;
     textView.selectable = YES;
@@ -1165,34 +1249,19 @@ typedef NS_ENUM(NSInteger, ChatMessageType) {
     textView.textContainer.lineFragmentPadding = 0;
     textView.textContainer.widthTracksTextView = NO;
     textView.textContainer.containerSize = NSMakeSize(maxTextWidth, CGFLOAT_MAX);
-    textView.verticallyResizable = YES;
+    textView.verticallyResizable = NO;
     textView.horizontallyResizable = NO;
+
     // Enable clickable links
-    textView.automaticLinkDetectionEnabled = NO; // We handle links ourselves in markdown parser
+    textView.automaticLinkDetectionEnabled = NO;
     [textView setLinkTextAttributes:@{
         NSForegroundColorAttributeName: [NSColor linkColor],
         NSUnderlineStyleAttributeName: @(NSUnderlineStyleSingle),
         NSCursorAttributeName: [NSCursor pointingHandCursor]
     }];
 
-    if (useMarkdown) {
-        [textView.textStorage setAttributedString:[self attributedStringFromMarkdown:displayText textColor:textColor]];
-    } else {
-        NSFont *font = (message.type == ChatMessageTypeFunction) ?
-            [NSFont monospacedSystemFontOfSize:11 weight:NSFontWeightRegular] :
-            [NSFont systemFontOfSize:14];
-        NSDictionary *attrs = @{
-            NSFontAttributeName: font,
-            NSForegroundColorAttributeName: textColor
-        };
-        NSAttributedString *attrStr = [[NSAttributedString alloc] initWithString:displayText attributes:attrs];
-        [textView.textStorage setAttributedString:attrStr];
-    }
-
-    // Calculate size for text view
-    [textView.layoutManager ensureLayoutForTextContainer:textView.textContainer];
-    NSRect textRect = [textView.layoutManager usedRectForTextContainer:textView.textContainer];
-    CGFloat textHeight = ceil(textRect.size.height);
+    // Set the text content
+    [textView.textStorage setAttributedString:attributedText];
 
     bubble.layer.backgroundColor = bubbleColor.CGColor;
 
@@ -1202,8 +1271,8 @@ typedef NS_ENUM(NSInteger, ChatMessageType) {
     // Padding for text inside bubble
     CGFloat verticalPadding = useBubbleStyle ? 10 : 4;
 
-    // Calculate actual text width for proper bubble sizing
-    CGFloat actualTextWidth = MIN(ceil(textRect.size.width), maxTextWidth);
+    // Cap text width to max
+    CGFloat actualTextWidth = MIN(textWidth, maxTextWidth);
 
     // Constraints for text view in bubble
     [NSLayoutConstraint activateConstraints:@[

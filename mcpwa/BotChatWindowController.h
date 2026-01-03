@@ -27,6 +27,11 @@ NS_ASSUME_NONNULL_BEGIN
 /// Check if window is currently visible
 @property (nonatomic, readonly) BOOL isVisible;
 
+/// Zoom actions (responds to View menu items)
+- (IBAction)zoomIn:(id)sender;
+- (IBAction)zoomOut:(id)sender;
+- (IBAction)zoomToActualSize:(id)sender;
+
 @end
 
 NS_ASSUME_NONNULL_END
