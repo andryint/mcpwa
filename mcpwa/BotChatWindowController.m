@@ -97,6 +97,8 @@ typedef NS_ENUM(NSInteger, ChatMessageType) {
 @interface BotChatWindowController () <NSPopoverDelegate, NSTextViewDelegate>
 @property (nonatomic, strong) GeminiClient *geminiClient;
 @property (nonatomic, strong) NSMutableArray<ChatDisplayMessage *> *messages;
+@property (nonatomic, strong) NSView *titleBarView;
+@property (nonatomic, strong) NSTextField *titleLabel;
 @property (nonatomic, strong) NSScrollView *chatScrollView;
 @property (nonatomic, strong) NSStackView *chatStackView;
 @property (nonatomic, strong) NSScrollView *inputScrollView;
@@ -111,6 +113,8 @@ typedef NS_ENUM(NSInteger, ChatMessageType) {
 @property (nonatomic, assign) BOOL isCancelled;
 @property (nonatomic, strong) NSArray<NSDictionary *> *mcpTools;
 @property (nonatomic, strong) NSPopUpButton *modelSelector;
+@property (nonatomic, assign) BOOL hasTitleBeenGenerated;
+@property (nonatomic, copy) NSString *firstUserMessage;
 @end
 
 @implementation BotChatWindowController
@@ -181,6 +185,37 @@ typedef NS_ENUM(NSInteger, ChatMessageType) {
     NSView *contentView = self.window.contentView;
     contentView.wantsLayer = YES;
     contentView.layer.backgroundColor = backgroundColor().CGColor;
+
+    // Title bar view (non-transparent bar at the top, aligned with traffic lights)
+    NSView *titleBarView = [[NSView alloc] initWithFrame:NSZeroRect];
+    titleBarView.translatesAutoresizingMaskIntoConstraints = NO;
+    titleBarView.wantsLayer = YES;
+    titleBarView.layer.backgroundColor = backgroundColor().CGColor;
+    [contentView addSubview:titleBarView];
+    self.titleBarView = titleBarView;
+
+    // Title label - centered, aligned with traffic light buttons
+    NSTextField *titleLabel = [NSTextField labelWithString:@"WhatsApp Assistant"];
+    titleLabel.translatesAutoresizingMaskIntoConstraints = NO;
+    titleLabel.font = [NSFont systemFontOfSize:13 weight:NSFontWeightMedium];
+    titleLabel.textColor = primaryTextColor();
+    titleLabel.alignment = NSTextAlignmentCenter;
+    [titleBarView addSubview:titleLabel];
+    self.titleLabel = titleLabel;
+
+    // Title bar constraints - narrow height to align with traffic lights (~28px)
+    [NSLayoutConstraint activateConstraints:@[
+        [titleBarView.topAnchor constraintEqualToAnchor:contentView.topAnchor],
+        [titleBarView.leadingAnchor constraintEqualToAnchor:contentView.leadingAnchor],
+        [titleBarView.trailingAnchor constraintEqualToAnchor:contentView.trailingAnchor],
+        [titleBarView.heightAnchor constraintEqualToConstant:28]
+    ]];
+
+    // Title label centered in title bar
+    [NSLayoutConstraint activateConstraints:@[
+        [titleLabel.centerXAnchor constraintEqualToAnchor:titleBarView.centerXAnchor],
+        [titleLabel.centerYAnchor constraintEqualToAnchor:titleBarView.centerYAnchor]
+    ]];
 
     // Chat scroll view (takes most of the space)
     self.chatScrollView = [[NSScrollView alloc] initWithFrame:NSZeroRect];
@@ -359,9 +394,9 @@ typedef NS_ENUM(NSInteger, ChatMessageType) {
     self.inputContainerHeightConstraint = [inputContainer.heightAnchor constraintEqualToConstant:80];
     self.inputContainerHeightConstraint.active = YES;
 
-    // Add top padding to account for titlebar area with traffic light buttons
+    // Chat scroll view starts below the title bar
     [NSLayoutConstraint activateConstraints:@[
-        [self.chatScrollView.topAnchor constraintEqualToAnchor:contentView.topAnchor constant:8],
+        [self.chatScrollView.topAnchor constraintEqualToAnchor:self.titleBarView.bottomAnchor],
         [self.chatScrollView.bottomAnchor constraintEqualToAnchor:inputContainer.topAnchor],
         [inputContainer.bottomAnchor constraintEqualToAnchor:contentView.bottomAnchor]
     ]];
@@ -1142,6 +1177,11 @@ typedef NS_ENUM(NSInteger, ChatMessageType) {
     NSString *text = [self.inputTextView.string stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
     if (text.length == 0 || self.isProcessing) return;
 
+    // Save the first user message for title generation
+    if (!self.firstUserMessage) {
+        self.firstUserMessage = text;
+    }
+
     self.isCancelled = NO;
     self.inputTextView.string = @"";
     [self updatePlaceholder];
@@ -1475,6 +1515,66 @@ typedef NS_ENUM(NSInteger, ChatMessageType) {
     }
 }
 
+#pragma mark - Title Generation
+
+- (void)generateTitleIfNeeded {
+    if (self.hasTitleBeenGenerated || !self.firstUserMessage) {
+        return;
+    }
+    self.hasTitleBeenGenerated = YES;
+
+    // Generate title asynchronously using Gemini API
+    NSString *apiKey = [GeminiClient loadAPIKey];
+    if (!apiKey) return;
+
+    NSString *prompt = [NSString stringWithFormat:
+        @"Generate a very short title (2-5 words max) for a chat that starts with this message: \"%@\". "
+        @"Reply with ONLY the title, no quotes, no explanation.", self.firstUserMessage];
+
+    // Use a fast model for title generation
+    NSString *urlString = [NSString stringWithFormat:
+        @"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=%@", apiKey];
+    NSURL *url = [NSURL URLWithString:urlString];
+
+    NSMutableURLRequest *request = [NSMutableURLRequest requestWithURL:url];
+    request.HTTPMethod = @"POST";
+    [request setValue:@"application/json" forHTTPHeaderField:@"Content-Type"];
+
+    NSDictionary *body = @{
+        @"contents": @[@{
+            @"parts": @[@{@"text": prompt}]
+        }]
+    };
+
+    NSError *jsonError;
+    request.HTTPBody = [NSJSONSerialization dataWithJSONObject:body options:0 error:&jsonError];
+    if (jsonError) return;
+
+    NSURLSession *session = [NSURLSession sharedSession];
+    NSURLSessionDataTask *task = [session dataTaskWithRequest:request completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {
+        if (error || !data) return;
+
+        NSDictionary *json = [NSJSONSerialization JSONObjectWithData:data options:0 error:nil];
+        NSString *title = json[@"candidates"][0][@"content"][@"parts"][0][@"text"];
+
+        if (title.length > 0) {
+            // Clean up the title - remove quotes and trim
+            title = [title stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+            title = [title stringByTrimmingCharactersInSet:[NSCharacterSet characterSetWithCharactersInString:@"\"'"]];
+
+            // Limit title length
+            if (title.length > 40) {
+                title = [[title substringToIndex:37] stringByAppendingString:@"..."];
+            }
+
+            dispatch_async(dispatch_get_main_queue(), ^{
+                self.titleLabel.stringValue = title;
+            });
+        }
+    }];
+    [task resume];
+}
+
 #pragma mark - GeminiClientDelegate
 
 - (void)geminiClient:(GeminiClient *)client didCompleteSendWithResponse:(GeminiChatResponse *)response {
@@ -1517,6 +1617,7 @@ typedef NS_ENUM(NSInteger, ChatMessageType) {
     }
     [self setProcessing:NO];
     [self updateStatus:@"Ready"];
+    [self generateTitleIfNeeded];
 }
 
 - (void)geminiClient:(GeminiClient *)client didCompleteToolLoopWithResponse:(GeminiChatResponse *)response {
@@ -1537,6 +1638,7 @@ typedef NS_ENUM(NSInteger, ChatMessageType) {
     }
     [self setProcessing:NO];
     [self updateStatus:@"Ready"];
+    [self generateTitleIfNeeded];
 }
 
 - (void)geminiClient:(GeminiClient *)client didFailWithError:(NSError *)error {
