@@ -618,10 +618,8 @@ static const CGFloat kFontSizeStep = 2.0;
     ]];
 
     // Add welcome message
-    [self addSystemMessage:@"Welcome! I'm your assistant powered by Gemini. I can:\n"
-                           "- Read and send WhatsApp messages\n"
-                           "- Search the web (Google Search grounding)\n"
-                           "- Run shell commands on your Mac\n"
+    [self addSystemMessage:@"I'm your WhatsApp Assistant powered by Gemini.\n"
+                           "I can search your chats, read messages, and send replies.\n"
                            "Just ask me anything!"];
 }
 
@@ -937,7 +935,8 @@ static const CGFloat kFontSizeStep = 2.0;
         // Handle bullet points - detect and set up paragraph style
         BOOL isBulletPoint = NO;
         if ([line hasPrefix:@"* "] || [line hasPrefix:@"- "]) {
-            line = [NSString stringWithFormat:@"•  %@", [line substringFromIndex:2]];
+            // Use a medium bullet character (BULLET OPERATOR U+2219) with proper spacing
+            line = [NSString stringWithFormat:@"\u2022  %@", [line substringFromIndex:2]];
             isBulletPoint = YES;
         }
 
@@ -1121,9 +1120,10 @@ static const CGFloat kFontSizeStep = 2.0;
         // Apply paragraph style for bullet points (hanging indent)
         if (isBulletPoint && lineAttr.length > 0) {
             NSMutableParagraphStyle *bulletStyle = [[NSMutableParagraphStyle alloc] init];
-            bulletStyle.headIndent = 20;        // Indent for wrapped lines
+            bulletStyle.headIndent = 24;         // Indent for wrapped lines (aligned with text after bullet)
             bulletStyle.firstLineHeadIndent = 0; // Bullet starts at left margin
-            bulletStyle.paragraphSpacing = 4;    // Small space after each bullet
+            bulletStyle.paragraphSpacingBefore = 8;  // Space before each bullet item
+            bulletStyle.paragraphSpacing = 4;    // Space after each bullet item
             [lineAttr addAttribute:NSParagraphStyleAttributeName value:bulletStyle range:NSMakeRange(0, lineAttr.length)];
         }
 
@@ -1199,7 +1199,7 @@ static const CGFloat kFontSizeStep = 2.0;
             cornerRadius = 8;
             break;
         case ChatMessageTypeSystem:
-            // System messages: subtle, muted appearance
+            // System messages: subtle, muted appearance, wider (90% width)
             if (isDarkMode()) {
                 bubbleColor = [NSColor colorWithWhite:0.2 alpha:1.0];
             } else {
@@ -1207,6 +1207,8 @@ static const CGFloat kFontSizeStep = 2.0;
             }
             textColor = secondaryTextColor();
             cornerRadius = 8;
+            maxBubbleWidth = floor(chatWidth * 0.90);  // Wider for system messages
+            maxTextWidth = maxBubbleWidth - (horizontalPadding * 2);
             break;
     }
 
