@@ -465,7 +465,7 @@ static const CGFloat kFontSizeStep = 2.0;
     self.chatStackView.spacing = 12;  // Slightly more spacing between messages
     self.chatStackView.edgeInsets = NSEdgeInsetsMake(16, 24, 16, 24);  // More left/right margin
 
-    // Flip the scroll view so content starts at top
+    // Document view for scroll content
     NSView *documentView = [[NSView alloc] initWithFrame:NSZeroRect];
     documentView.translatesAutoresizingMaskIntoConstraints = NO;
     [documentView addSubview:self.chatStackView];
@@ -707,12 +707,18 @@ static const CGFloat kFontSizeStep = 2.0;
         [documentView.widthAnchor constraintEqualToAnchor:self.chatScrollView.widthAnchor]
     ]];
 
-    // Stack view constraints
+    // Stack view constraints - pin to bottom so content sits at bottom of scroll view
     [NSLayoutConstraint activateConstraints:@[
         [self.chatStackView.leadingAnchor constraintEqualToAnchor:documentView.leadingAnchor],
         [self.chatStackView.trailingAnchor constraintEqualToAnchor:documentView.trailingAnchor],
-        [self.chatStackView.topAnchor constraintEqualToAnchor:documentView.topAnchor],
-        [self.chatStackView.bottomAnchor constraintEqualToAnchor:documentView.bottomAnchor]
+        [self.chatStackView.bottomAnchor constraintEqualToAnchor:documentView.bottomAnchor],
+        // Top constraint with low priority - allows stack to grow upward
+        [self.chatStackView.topAnchor constraintGreaterThanOrEqualToAnchor:documentView.topAnchor]
+    ]];
+
+    // Document view must be at least as tall as the visible area
+    [NSLayoutConstraint activateConstraints:@[
+        [documentView.heightAnchor constraintGreaterThanOrEqualToAnchor:self.chatScrollView.heightAnchor]
     ]];
 
     // Add welcome message
@@ -1547,12 +1553,13 @@ static const CGFloat kFontSizeStep = 2.0;
     // Force layout
     [self.window layoutIfNeeded];
 
-    // Get the last view in the stack
-    NSArray *arrangedSubviews = self.chatStackView.arrangedSubviews;
-    if (arrangedSubviews.count > 0) {
-        NSView *lastView = arrangedSubviews.lastObject;
-        // Scroll to make the last view visible
-        [lastView scrollRectToVisible:lastView.bounds];
+    // Scroll to bottom of document view
+    NSView *documentView = self.chatScrollView.documentView;
+    if (documentView) {
+        // In non-flipped coordinates, the bottom is at y=0
+        // We want to scroll so that the bottom of the document is visible
+        NSPoint bottomPoint = NSMakePoint(0, 0);
+        [documentView scrollPoint:bottomPoint];
     }
 }
 
