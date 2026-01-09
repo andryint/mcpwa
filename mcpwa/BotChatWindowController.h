@@ -3,14 +3,16 @@
 //  mcpwa
 //
 //  Bot Chat Window - Gemini-powered chat with WhatsApp MCP integration
+//  Supports both MCP mode (WhatsApp) and RAG mode (Knowledge Base)
 //
 
 #import <Cocoa/Cocoa.h>
 #import "GeminiClient.h"
+#import "RAGClient.h"
 
 NS_ASSUME_NONNULL_BEGIN
 
-@interface BotChatWindowController : NSWindowController <GeminiClientDelegate, NSTextFieldDelegate>
+@interface BotChatWindowController : NSWindowController <GeminiClientDelegate, RAGClientDelegate, NSTextFieldDelegate>
 
 /// Shared instance (singleton pattern for easy access)
 + (instancetype)sharedController;

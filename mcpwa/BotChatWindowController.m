@@ -10,6 +10,7 @@
 #import "DebugConfigWindowController.h"
 #import "SettingsWindowController.h"
 #import "WALogger.h"
+#import <QuartzCore/QuartzCore.h>
 
 // Claude-style light mode colors
 // User bubble: warm beige/tan (Claude style)
@@ -105,6 +106,7 @@ static const CGFloat kFontSizeStep = 2.0;
 
 @interface BotChatWindowController () <NSPopoverDelegate, NSTextViewDelegate>
 @property (nonatomic, strong) GeminiClient *geminiClient;
+@property (nonatomic, strong) RAGClient *ragClient;
 @property (nonatomic, strong) NSMutableArray<ChatDisplayMessage *> *messages;
 @property (nonatomic, strong) NSView *titleBarView;
 @property (nonatomic, strong) NSTextField *titleLabel;
@@ -118,6 +120,7 @@ static const CGFloat kFontSizeStep = 2.0;
 @property (nonatomic, strong) NSButton *stopButton;
 @property (nonatomic, strong) NSProgressIndicator *loadingIndicator;
 @property (nonatomic, strong) NSTextField *statusLabel;
+@property (nonatomic, strong) NSTextField *modeIndicator;
 @property (nonatomic, assign) BOOL isProcessing;
 @property (nonatomic, assign) BOOL isCancelled;
 @property (nonatomic, strong) NSArray<NSDictionary *> *mcpTools;
@@ -126,6 +129,11 @@ static const CGFloat kFontSizeStep = 2.0;
 @property (nonatomic, copy) NSString *firstUserMessage;
 @property (nonatomic, strong) NSView *inputContainer;
 @property (nonatomic, assign) CGFloat currentFontSize;
+@property (nonatomic, assign) WAChatMode currentChatMode;
+@property (nonatomic, strong) NSMutableString *streamingResponse;
+@property (nonatomic, strong) NSTextView *streamingTextView;   // For live streaming updates with formatting
+@property (nonatomic, strong) NSView *streamingBubbleView;     // The bubble containing streaming text
+@property (nonatomic, assign) CGFloat streamingMaxWidth;       // Max width for streaming text
 @end
 
 @implementation BotChatWindowController
@@ -143,19 +151,30 @@ static const CGFloat kFontSizeStep = 2.0;
     self = [super init];
     if (self) {
         _messages = [NSMutableArray array];
+        _streamingResponse = [NSMutableString string];
 
         // Load saved font size or use default
         CGFloat savedFontSize = [[NSUserDefaults standardUserDefaults] floatForKey:@"ChatFontSize"];
         _currentFontSize = (savedFontSize >= kMinFontSize && savedFontSize <= kMaxFontSize) ? savedFontSize : kDefaultFontSize;
 
+        // Load current chat mode
+        _currentChatMode = [SettingsWindowController currentChatMode];
+
         [self setupWindow];
         [self setupGeminiClient];
+        [self setupRAGClient];
         [self loadMCPTools];
 
         // Listen to theme change notification from Settings
         [[NSNotificationCenter defaultCenter] addObserver:self
                                                  selector:@selector(themeDidChange:)
                                                      name:WAThemeDidChangeNotification
+                                                   object:nil];
+
+        // Listen to chat mode change notification from Settings
+        [[NSNotificationCenter defaultCenter] addObserver:self
+                                                 selector:@selector(chatModeDidChange:)
+                                                     name:WAChatModeDidChangeNotification
                                                    object:nil];
     }
     return self;
@@ -169,6 +188,33 @@ static const CGFloat kFontSizeStep = 2.0;
     dispatch_async(dispatch_get_main_queue(), ^{
         [self updateColorsForAppearance];
     });
+}
+
+- (void)chatModeDidChange:(NSNotification *)notification {
+    dispatch_async(dispatch_get_main_queue(), ^{
+        WAChatMode newMode = [notification.userInfo[@"mode"] integerValue];
+        self.currentChatMode = newMode;
+
+        // Update mode indicator
+        [self updateModeIndicator];
+
+        // Reinitialize RAG client if URL might have changed
+        if (newMode == WAChatModeRAG) {
+            [self setupRAGClient];
+        }
+
+        // Show system message about mode change
+        NSString *modeName = (newMode == WAChatModeRAG) ? @"RAG (Knowledge Base)" : @"MCP (WhatsApp)";
+        [self addSystemMessage:[NSString stringWithFormat:@"Switched to %@ mode", modeName]];
+
+        [self updateStatus:@"Ready"];
+    });
+}
+
+- (void)setupRAGClient {
+    NSString *ragURL = [SettingsWindowController ragServiceURL];
+    self.ragClient = [[RAGClient alloc] initWithBaseURL:ragURL];
+    self.ragClient.delegate = self;
 }
 
 - (void)updateColorsForAppearance {
@@ -215,6 +261,9 @@ static const CGFloat kFontSizeStep = 2.0;
     self.sendButton.layer.backgroundColor = accentColor.CGColor;
     self.stopButton.layer.backgroundColor = accentColor.CGColor;
 
+    // Update mode indicator
+    [self updateModeIndicator];
+
     // Rebuild all chat messages to update bubble colors
     [self rebuildChatMessages];
 
@@ -232,6 +281,34 @@ static const CGFloat kFontSizeStep = 2.0;
     // Re-add all messages with updated colors
     for (ChatDisplayMessage *message in self.messages) {
         [self addMessageBubble:message];
+    }
+}
+
+- (void)updateModeIndicator {
+    if (self.currentChatMode == WAChatModeRAG) {
+        self.modeIndicator.stringValue = @"RAG";
+        // Blue color for RAG mode
+        if (isDarkMode()) {
+            self.modeIndicator.backgroundColor = [NSColor colorWithRed:0.2 green:0.4 blue:0.7 alpha:1.0];
+            self.modeIndicator.textColor = [NSColor whiteColor];
+        } else {
+            self.modeIndicator.backgroundColor = [NSColor colorWithRed:0.85 green:0.9 blue:1.0 alpha:1.0];
+            self.modeIndicator.textColor = [NSColor colorWithRed:0.2 green:0.4 blue:0.7 alpha:1.0];
+        }
+        // Hide model selector in RAG mode (RAG service handles the model)
+        self.modelSelector.hidden = YES;
+    } else {
+        self.modeIndicator.stringValue = @"MCP";
+        // Green color for MCP mode
+        if (isDarkMode()) {
+            self.modeIndicator.backgroundColor = [NSColor colorWithRed:0.2 green:0.5 blue:0.3 alpha:1.0];
+            self.modeIndicator.textColor = [NSColor whiteColor];
+        } else {
+            self.modeIndicator.backgroundColor = [NSColor colorWithRed:0.85 green:0.95 blue:0.88 alpha:1.0];
+            self.modeIndicator.textColor = [NSColor colorWithRed:0.2 green:0.5 blue:0.3 alpha:1.0];
+        }
+        // Show model selector in MCP mode
+        self.modelSelector.hidden = NO;
     }
 }
 
@@ -488,6 +565,20 @@ static const CGFloat kFontSizeStep = 2.0;
     self.stopButton.contentTintColor = [NSColor whiteColor];
     [inputContainer addSubview:self.stopButton];
 
+    // Mode indicator label (shows MCP or RAG)
+    self.modeIndicator = [[NSTextField alloc] initWithFrame:NSZeroRect];
+    self.modeIndicator.translatesAutoresizingMaskIntoConstraints = NO;
+    self.modeIndicator.bezeled = NO;
+    self.modeIndicator.editable = NO;
+    self.modeIndicator.selectable = NO;
+    self.modeIndicator.drawsBackground = YES;
+    self.modeIndicator.wantsLayer = YES;
+    self.modeIndicator.layer.cornerRadius = 4;
+    self.modeIndicator.font = [NSFont boldSystemFontOfSize:9];
+    self.modeIndicator.alignment = NSTextAlignmentCenter;
+    [inputContainer addSubview:self.modeIndicator];
+    [self updateModeIndicator];
+
     // Model selector dropdown
     self.modelSelector = [[NSPopUpButton alloc] initWithFrame:NSZeroRect pullsDown:NO];
     self.modelSelector.translatesAutoresizingMaskIntoConstraints = NO;
@@ -591,14 +682,21 @@ static const CGFloat kFontSizeStep = 2.0;
         [self.stopButton.centerYAnchor constraintEqualToAnchor:self.sendButton.centerYAnchor]
     ]];
 
-    // Bottom row: status on left, model selector on right
+    // Bottom row: status on left, mode indicator and model selector on right
     [NSLayoutConstraint activateConstraints:@[
         [self.statusLabel.leadingAnchor constraintEqualToAnchor:inputContainer.leadingAnchor constant:20],
         [self.statusLabel.topAnchor constraintEqualToAnchor:self.inputScrollView.bottomAnchor constant:4],
         [self.statusLabel.bottomAnchor constraintEqualToAnchor:inputContainer.bottomAnchor constant:-10],
+
+        // Mode indicator between status and model selector
+        [self.modeIndicator.trailingAnchor constraintEqualToAnchor:self.modelSelector.leadingAnchor constant:-8],
+        [self.modeIndicator.centerYAnchor constraintEqualToAnchor:self.statusLabel.centerYAnchor],
+        [self.modeIndicator.widthAnchor constraintEqualToConstant:36],
+        [self.modeIndicator.heightAnchor constraintEqualToConstant:18],
+
         [self.modelSelector.trailingAnchor constraintEqualToAnchor:inputContainer.trailingAnchor constant:-10],
         [self.modelSelector.centerYAnchor constraintEqualToAnchor:self.statusLabel.centerYAnchor],
-        [self.statusLabel.trailingAnchor constraintLessThanOrEqualToAnchor:self.modelSelector.leadingAnchor constant:-10]
+        [self.statusLabel.trailingAnchor constraintLessThanOrEqualToAnchor:self.modeIndicator.leadingAnchor constant:-10]
     ]];
 
     // Document view constraints
@@ -865,11 +963,14 @@ static const CGFloat kFontSizeStep = 2.0;
 }
 
 - (void)addBotMessage:(NSString *)text {
+    NSLog(@"[RAG UI] addBotMessage START, text length: %lu", (unsigned long)text.length);
     ChatDisplayMessage *msg = [[ChatDisplayMessage alloc] init];
     msg.type = ChatMessageTypeBot;
     msg.text = text;
     [self.messages addObject:msg];
+    NSLog(@"[RAG UI] addBotMessage calling addMessageBubble");
     [self addMessageBubble:msg];
+    NSLog(@"[RAG UI] addBotMessage END");
 }
 
 - (void)addFunctionMessage:(NSString *)functionName result:(NSString *)result {
@@ -1114,6 +1215,16 @@ static const CGFloat kFontSizeStep = 2.0;
                     NSForegroundColorAttributeName: textColor
                 }];
                 [lineAttr appendAttributedString:regularAttr];
+            } else {
+                // No progress made - this means we hit a special char that wasn't handled
+                // (e.g., [ that doesn't form a valid link). Output it as literal and advance.
+                NSString *literal = [NSString stringWithCharacters:&c length:1];
+                NSAttributedString *literalAttr = [[NSAttributedString alloc] initWithString:literal attributes:@{
+                    NSFontAttributeName: lineFont,
+                    NSForegroundColorAttributeName: textColor
+                }];
+                [lineAttr appendAttributedString:literalAttr];
+                i++;
             }
         }
 
@@ -1314,20 +1425,135 @@ static const CGFloat kFontSizeStep = 2.0;
     [self scrollToBottom];
 }
 
+#pragma mark - Streaming Message Support
+
+- (void)createStreamingBubble {
+    // Remove any existing streaming bubble
+    if (self.streamingBubbleView) {
+        [self.streamingBubbleView removeFromSuperview];
+        self.streamingBubbleView = nil;
+        self.streamingTextView = nil;
+    }
+
+    // Create container (same pattern as addMessageBubble for bot messages)
+    NSView *bubbleContainer = [[NSView alloc] initWithFrame:NSZeroRect];
+    bubbleContainer.translatesAutoresizingMaskIntoConstraints = NO;
+
+    // Create bubble background (bot style - no visible bubble)
+    NSView *bubble = [[NSView alloc] initWithFrame:NSZeroRect];
+    bubble.translatesAutoresizingMaskIntoConstraints = NO;
+    bubble.wantsLayer = YES;
+    bubble.layer.backgroundColor = [NSColor clearColor].CGColor;
+
+    // Calculate max width as 3/4 of the chat view width
+    CGFloat chatWidth = self.chatScrollView.bounds.size.width;
+    if (chatWidth < 100) chatWidth = 500;
+    CGFloat maxBubbleWidth = floor(chatWidth * 0.75);
+    self.streamingMaxWidth = maxBubbleWidth;
+
+    // Create NSTextView for streaming content with formatting support
+    NSTextView *textView = [[NSTextView alloc] initWithFrame:NSMakeRect(0, 0, maxBubbleWidth, 20)];
+    textView.translatesAutoresizingMaskIntoConstraints = NO;
+    textView.editable = NO;
+    textView.selectable = YES;
+    textView.backgroundColor = [NSColor clearColor];
+    textView.drawsBackground = NO;
+    textView.textContainerInset = NSZeroSize;
+    textView.textContainer.lineFragmentPadding = 0;
+    textView.textContainer.widthTracksTextView = NO;
+    textView.textContainer.containerSize = NSMakeSize(maxBubbleWidth, CGFLOAT_MAX);
+    textView.verticallyResizable = YES;
+    textView.horizontallyResizable = NO;
+
+    [bubble addSubview:textView];
+    [bubbleContainer addSubview:bubble];
+
+    // Constraints for text view in bubble
+    [NSLayoutConstraint activateConstraints:@[
+        [textView.leadingAnchor constraintEqualToAnchor:bubble.leadingAnchor],
+        [textView.trailingAnchor constraintEqualToAnchor:bubble.trailingAnchor],
+        [textView.topAnchor constraintEqualToAnchor:bubble.topAnchor constant:4],
+        [textView.bottomAnchor constraintEqualToAnchor:bubble.bottomAnchor constant:-4],
+        [textView.widthAnchor constraintEqualToConstant:maxBubbleWidth]
+    ]];
+
+    // Constraints for bubble in container (left-aligned like bot messages)
+    [NSLayoutConstraint activateConstraints:@[
+        [bubble.leadingAnchor constraintEqualToAnchor:bubbleContainer.leadingAnchor],
+        [bubble.topAnchor constraintEqualToAnchor:bubbleContainer.topAnchor],
+        [bubble.bottomAnchor constraintEqualToAnchor:bubbleContainer.bottomAnchor]
+    ]];
+
+    // Add to stack view
+    [self.chatStackView addArrangedSubview:bubbleContainer];
+    [bubbleContainer.widthAnchor constraintEqualToAnchor:self.chatStackView.widthAnchor constant:-48].active = YES;
+
+    // Store references for updates
+    self.streamingBubbleView = bubbleContainer;
+    self.streamingTextView = textView;
+
+    [self scrollToBottom];
+}
+
+- (void)updateStreamingBubble:(NSString *)text {
+    if (!self.streamingTextView) {
+        return;
+    }
+
+    // Apply markdown formatting to the streaming text
+    NSAttributedString *formattedText = [self attributedStringFromMarkdown:text textColor:primaryTextColor()];
+
+    // Update the text view
+    [self.streamingTextView.textStorage setAttributedString:formattedText];
+
+    // Recalculate height based on content
+    [self.streamingTextView.layoutManager ensureLayoutForTextContainer:self.streamingTextView.textContainer];
+    NSRect usedRect = [self.streamingTextView.layoutManager usedRectForTextContainer:self.streamingTextView.textContainer];
+
+    // Update the text view's frame height
+    NSRect frame = self.streamingTextView.frame;
+    frame.size.height = ceil(usedRect.size.height);
+    self.streamingTextView.frame = frame;
+
+    // Force layout update
+    [self.streamingBubbleView setNeedsLayout:YES];
+    [self.streamingBubbleView layoutSubtreeIfNeeded];
+
+    // Force window to display NOW and process the display
+    [self.window display];
+
+    // Process any pending display operations in the run loop
+    // This is critical - it actually flushes the graphics to screen
+    CFRunLoopRunInMode(kCFRunLoopDefaultMode, 0.001, false);
+
+    [self scrollToBottomImmediate];
+}
+
+- (void)finalizeStreamingBubble {
+    // The streaming bubble will be replaced by the final message in didCompleteQueryWithResponse
+    // Just clear our references
+    self.streamingBubbleView = nil;
+    self.streamingTextView = nil;
+}
+
 - (void)scrollToBottom {
     // Delay scroll to allow layout to complete
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.1 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-        // Force layout
-        [self.window layoutIfNeeded];
-
-        // Get the last view in the stack
-        NSArray *arrangedSubviews = self.chatStackView.arrangedSubviews;
-        if (arrangedSubviews.count > 0) {
-            NSView *lastView = arrangedSubviews.lastObject;
-            // Scroll to make the last view visible
-            [lastView scrollRectToVisible:lastView.bounds];
-        }
+        [self scrollToBottomImmediate];
     });
+}
+
+- (void)scrollToBottomImmediate {
+    // Force layout
+    [self.window layoutIfNeeded];
+
+    // Get the last view in the stack
+    NSArray *arrangedSubviews = self.chatStackView.arrangedSubviews;
+    if (arrangedSubviews.count > 0) {
+        NSView *lastView = arrangedSubviews.lastObject;
+        // Scroll to make the last view visible
+        [lastView scrollRectToVisible:lastView.bounds];
+    }
 }
 
 - (void)updateStatus:(NSString *)status {
@@ -1389,20 +1615,32 @@ static const CGFloat kFontSizeStep = 2.0;
     [self updateInputHeight];
     [self addUserMessage:text];
     [self setProcessing:YES];
-    [self updateStatus:@"Thinking..."];
 
-    [self.geminiClient sendMessage:text];
+    // Route to appropriate backend based on current mode
+    if (self.currentChatMode == WAChatModeRAG) {
+        [self updateStatus:@"Querying knowledge base..."];
+        [self.streamingResponse setString:@""];
+        [self createStreamingBubble];  // Create empty bubble for streaming
+        [self.ragClient queryStream:text];
+    } else {
+        [self updateStatus:@"Thinking..."];
+        [self.geminiClient sendMessage:text];
+    }
 }
 
 - (void)stopProcessing:(id)sender {
     // Set cancellation flag first
     self.isCancelled = YES;
 
-    // Cancel the current Gemini request
-    [self.geminiClient cancelRequest];
-
-    // Clear conversation history to prevent stale function call chains
-    [self.geminiClient clearHistory];
+    // Cancel the current request based on mode
+    if (self.currentChatMode == WAChatModeRAG) {
+        [self.ragClient cancelRequest];
+    } else {
+        // Cancel the current Gemini request
+        [self.geminiClient cancelRequest];
+        // Clear conversation history to prevent stale function call chains
+        [self.geminiClient clearHistory];
+    }
 
     // Reset processing state
     [self setProcessing:NO];
@@ -1877,6 +2115,136 @@ static const CGFloat kFontSizeStep = 2.0;
         [self.geminiClient sendFunctionResult:call.name result:result];
         NSLog(@"[Gemini] sendFunctionResult called for %@", call.name);
     }];
+}
+
+#pragma mark - RAGClientDelegate
+
+- (void)ragClient:(RAGClient *)client didReceiveStreamChunk:(NSString *)chunk {
+    // Use dispatch_sync to ensure UI update completes before processing next chunk
+    // This forces the run loop to render each chunk before continuing
+    dispatch_sync(dispatch_get_main_queue(), ^{
+        // Append to streaming response
+        [self.streamingResponse appendString:chunk];
+
+        // Update the streaming bubble with accumulated text
+        [self updateStreamingBubble:self.streamingResponse];
+
+        // Update status to show we're receiving data
+        [self updateStatus:@"Receiving response..."];
+    });
+}
+
+- (void)ragClient:(RAGClient *)client didCompleteQueryWithResponse:(RAGQueryResponse *)response {
+    // Must dispatch to main thread for UI updates
+    dispatch_async(dispatch_get_main_queue(), ^{
+        NSLog(@"[RAG UI] didCompleteQueryWithResponse called, isCancelled: %d, answer length: %lu",
+              self.isCancelled, (unsigned long)response.answer.length);
+
+        if (self.isCancelled) {
+            NSLog(@"[RAG UI] Cancelled, returning early");
+            return;
+        }
+
+        // Remove the streaming bubble - we'll replace it with the final formatted message
+        NSLog(@"[RAG UI] Removing streaming bubble: %@", self.streamingBubbleView);
+        if (self.streamingBubbleView) {
+            [self.streamingBubbleView removeFromSuperview];
+            [self finalizeStreamingBubble];
+        }
+
+        if (response.error) {
+            NSLog(@"[RAG UI] Response has error: %@", response.error);
+            [self addErrorMessage:response.error];
+            [self setProcessing:NO];
+            [self updateStatus:@"Error"];
+            return;
+        }
+
+        // Build the response message
+        NSMutableString *responseText = [NSMutableString string];
+
+        if (response.answer.length > 0) {
+            [responseText appendString:response.answer];
+        }
+
+        // Add sources if available
+        if (response.sources.count > 0) {
+            [responseText appendString:@"\n\n**Sources:**\n"];
+            for (NSDictionary *source in response.sources) {
+                NSString *title = source[@"title"] ?: source[@"filename"] ?: @"Unknown";
+                NSString *url = source[@"url"];
+                if (url.length > 0) {
+                    [responseText appendFormat:@"- [%@](%@)\n", title, url];
+                } else {
+                    [responseText appendFormat:@"- %@\n", title];
+                }
+            }
+        }
+
+        NSLog(@"[RAG UI] Adding bot message, length: %lu", (unsigned long)responseText.length);
+        @try {
+            [self addBotMessage:responseText];
+            NSLog(@"[RAG UI] addBotMessage completed");
+        } @catch (NSException *exception) {
+            NSLog(@"[RAG UI] EXCEPTION in addBotMessage: %@ - %@", exception.name, exception.reason);
+        }
+        NSLog(@"[RAG UI] Setting processing NO");
+        [self setProcessing:NO];
+        NSLog(@"[RAG UI] Updating status to Ready");
+        [self updateStatus:@"Ready"];
+        NSLog(@"[RAG UI] Generating title if needed");
+        [self generateTitleIfNeeded];
+        NSLog(@"[RAG UI] didCompleteQueryWithResponse finished");
+    });
+}
+
+- (void)ragClient:(RAGClient *)client didCompleteSearchWithResponse:(RAGSearchResult *)response {
+    if (self.isCancelled) return;
+
+    if (response.error) {
+        [self addErrorMessage:response.error];
+        [self setProcessing:NO];
+        [self updateStatus:@"Error"];
+        return;
+    }
+
+    // Format search results
+    NSMutableString *responseText = [NSMutableString stringWithString:@"**Search Results:**\n\n"];
+
+    if (response.results.count == 0) {
+        [responseText appendString:@"No results found."];
+    } else {
+        for (NSDictionary *result in response.results) {
+            NSString *title = result[@"title"] ?: @"Untitled";
+            NSString *content = result[@"content"] ?: result[@"text"] ?: @"";
+            // Truncate long content
+            if (content.length > 200) {
+                content = [[content substringToIndex:197] stringByAppendingString:@"..."];
+            }
+            [responseText appendFormat:@"**%@**\n%@\n\n", title, content];
+        }
+    }
+
+    [self addBotMessage:responseText];
+    [self setProcessing:NO];
+    [self updateStatus:@"Ready"];
+}
+
+- (void)ragClient:(RAGClient *)client didFailWithError:(NSError *)error {
+    // Must dispatch to main thread for UI updates
+    dispatch_async(dispatch_get_main_queue(), ^{
+        if (self.isCancelled) return;
+
+        // Remove streaming bubble if present
+        if (self.streamingBubbleView) {
+            [self.streamingBubbleView removeFromSuperview];
+            [self finalizeStreamingBubble];
+        }
+
+        [self addErrorMessage:error.localizedDescription];
+        [self setProcessing:NO];
+        [self updateStatus:@"Error"];
+    });
 }
 
 #pragma mark - NSTextViewDelegate
