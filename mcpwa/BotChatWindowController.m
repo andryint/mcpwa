@@ -176,6 +176,12 @@ static const CGFloat kFontSizeStep = 2.0;
                                                  selector:@selector(chatModeDidChange:)
                                                      name:WAChatModeDidChangeNotification
                                                    object:nil];
+
+        // Listen to window resize to keep scroll at bottom
+        [[NSNotificationCenter defaultCenter] addObserver:self
+                                                 selector:@selector(windowDidResize:)
+                                                     name:NSWindowDidResizeNotification
+                                                   object:nil];
     }
     return self;
 }
@@ -209,6 +215,14 @@ static const CGFloat kFontSizeStep = 2.0;
 
         [self updateStatus:@"Ready"];
     });
+}
+
+- (void)windowDidResize:(NSNotification *)notification {
+    // Only handle resize for our window
+    if (notification.object != self.window) return;
+
+    // Scroll to bottom after resize to keep content visible
+    [self scrollToBottom];
 }
 
 - (void)setupRAGClient {
