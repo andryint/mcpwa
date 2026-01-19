@@ -2192,13 +2192,18 @@ static const CGFloat kFontSizeStep = 2.0;
         if (response.sources.count > 0) {
             [responseText appendString:@"\n\n**Sources:**\n"];
             for (NSDictionary *source in response.sources) {
-                NSString *title = source[@"title"] ?: source[@"filename"] ?: @"Unknown";
-                NSString *url = source[@"url"];
-                if (url.length > 0) {
-                    [responseText appendFormat:@"- [%@](%@)\n", title, url];
-                } else {
-                    [responseText appendFormat:@"- %@\n", title];
+                // RAG API returns: chat_name, time_start, chat_id, is_group, participants, etc.
+                NSString *chatName = source[@"chat_name"] ?: @"Unknown";
+                NSString *timeStart = source[@"time_start"];
+
+                // Format date from ISO format (e.g., "2025-12-24T17:18:00")
+                NSString *dateStr = @"";
+                if (timeStart.length >= 10) {
+                    // Extract just the date portion (YYYY-MM-DD)
+                    dateStr = [NSString stringWithFormat:@" [%@]", [timeStart substringToIndex:10]];
                 }
+
+                [responseText appendFormat:@"- %@%@\n", chatName, dateStr];
             }
         }
 
