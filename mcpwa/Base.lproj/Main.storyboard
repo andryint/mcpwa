@@ -222,6 +222,12 @@
                                                 <action selector="debugReadChatList:" target="Voe-Tx-rLC" id="zkV-nx-BBb"/>
                                             </connections>
                                         </menuItem>
+                                        <menuItem title="List RAG Models" id="rag-mdl-001" userLabel="List RAG Models">
+                                            <modifierMask key="keyEquivalentModifierMask"/>
+                                            <connections>
+                                                <action selector="debugListRAGModels:" target="Voe-Tx-rLC" id="rag-mdl-act"/>
+                                            </connections>
+                                        </menuItem>
                                         <menuItem title="Open Chat" id="j5i-pi-tGQ">
                                             <modifierMask key="keyEquivalentModifierMask"/>
                                             <connections>

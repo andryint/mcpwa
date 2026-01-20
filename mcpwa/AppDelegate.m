@@ -16,6 +16,7 @@
 #import "BotChatWindowController.h"
 #import "DebugConfigWindowController.h"
 #import "SettingsWindowController.h"
+#import "RAGClient.h"
 
 @interface AppDelegate ()
 @property (nonatomic, strong) MCPServer *server;
@@ -685,6 +686,41 @@
     dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
         [WAAccessibilityTest testGetCurrentChat];
     });
+}
+
+- (IBAction)debugListRAGModels:(id)sender {
+    NSString *ragURL = [SettingsWindowController ragServiceURL];
+    RAGClient *client = [[RAGClient alloc] initWithBaseURL:ragURL];
+
+    [WALogger info:@"[Debug] Fetching RAG models from %@", ragURL];
+
+    [client listModelsWithCompletion:^(NSArray<RAGModelItem *> *models, NSString *error) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            NSAlert *alert = [[NSAlert alloc] init];
+
+            if (error) {
+                alert.messageText = @"Error Loading Models";
+                alert.informativeText = [NSString stringWithFormat:@"Failed to fetch models from %@/models\n\nError: %@", ragURL, error];
+                alert.alertStyle = NSAlertStyleWarning;
+            } else if (models.count == 0) {
+                alert.messageText = @"No Models Found";
+                alert.informativeText = [NSString stringWithFormat:@"The server at %@/models returned an empty list.", ragURL];
+                alert.alertStyle = NSAlertStyleInformational;
+            } else {
+                alert.messageText = [NSString stringWithFormat:@"Found %lu Models", (unsigned long)models.count];
+
+                NSMutableString *modelList = [NSMutableString string];
+                for (RAGModelItem *model in models) {
+                    [modelList appendFormat:@"• %@ (%@)\n  ID: %@\n\n", model.name, model.provider, model.modelId];
+                }
+                alert.informativeText = modelList;
+                alert.alertStyle = NSAlertStyleInformational;
+            }
+
+            [alert addButtonWithTitle:@"OK"];
+            [alert runModal];
+        });
+    }];
 }
 
 #pragma mark - Chat Filter Debug Actions

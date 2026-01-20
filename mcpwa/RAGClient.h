@@ -32,10 +32,18 @@ NS_ASSUME_NONNULL_BEGIN
 @property (nonatomic, strong, nullable) NSArray<NSString *> *participants;
 @end
 
+/// RAG model item (matches API ModelInfo response)
+@interface RAGModelItem : NSObject
+@property (nonatomic, copy) NSString *modelId;      // API "id" field
+@property (nonatomic, copy) NSString *name;         // Display name
+@property (nonatomic, copy) NSString *provider;     // Provider (gemini, anthropic, openai)
+@end
+
 /// Delegate for RAG client callbacks
 @protocol RAGClientDelegate <NSObject>
 @optional
 - (void)ragClient:(id)client didReceiveStreamChunk:(NSString *)chunk;
+- (void)ragClient:(id)client didReceiveStatusUpdate:(NSString *)stage message:(NSString *)message;
 - (void)ragClient:(id)client didCompleteQueryWithResponse:(RAGQueryResponse *)response;
 - (void)ragClient:(id)client didCompleteSearchWithResponse:(RAGSearchResult *)response;
 - (void)ragClient:(id)client didFailWithError:(NSError *)error;
@@ -89,6 +97,9 @@ NS_ASSUME_NONNULL_BEGIN
 
 /// List all chats
 - (void)listChatsWithCompletion:(void(^)(NSArray<RAGChatItem *> * _Nullable chats, NSString * _Nullable error))completion;
+
+/// List available models from the server
+- (void)listModelsWithCompletion:(void(^)(NSArray<RAGModelItem *> * _Nullable models, NSString * _Nullable error))completion;
 
 /// Cancel any in-progress request
 - (void)cancelRequest;

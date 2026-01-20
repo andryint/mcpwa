@@ -23,6 +23,11 @@
 @implementation RAGChatItem
 @end
 
+#pragma mark - RAGModelItem
+
+@implementation RAGModelItem
+@end
+
 #pragma mark - RAGClient
 
 @interface RAGClient () <NSURLSessionDataDelegate>
@@ -368,7 +373,15 @@
         return;
     }
 
-    if ([type isEqualToString:@"chunk"]) {
+    if ([type isEqualToString:@"status"]) {
+        // Status update event - pipeline stage notification
+        NSString *stage = json[@"stage"];
+        NSString *message = json[@"message"];
+        [WALogger info:@"[RAG] Status update - stage: %@, message: %@", stage, message];
+        if ([self.delegate respondsToSelector:@selector(ragClient:didReceiveStatusUpdate:message:)]) {
+            [self.delegate ragClient:self didReceiveStatusUpdate:stage message:message];
+        }
+    } else if ([type isEqualToString:@"chunk"]) {
         // Text chunk
         NSString *text = json[@"text"];
         if (text) {
@@ -580,6 +593,66 @@
 
         [WALogger info:@"[RAG] Listed %lu chats", (unsigned long)chats.count];
         completion(chats, nil);
+    }];
+    [task resume];
+}
+
+#pragma mark - List Models
+
+- (void)listModelsWithCompletion:(void(^)(NSArray<RAGModelItem *> * _Nullable models, NSString * _Nullable error))completion {
+    NSString *urlString = [NSString stringWithFormat:@"%@/models", self.baseURL];
+    NSURL *url = [NSURL URLWithString:urlString];
+
+    if (!url) {
+        completion(nil, @"Invalid URL");
+        return;
+    }
+
+    NSURLRequest *request = [NSURLRequest requestWithURL:url];
+
+    NSURLSessionDataTask *task = [self.session dataTaskWithRequest:request
+                                                 completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {
+        if (error) {
+            completion(nil, error.localizedDescription);
+            return;
+        }
+
+        NSHTTPURLResponse *httpResponse = (NSHTTPURLResponse *)response;
+        if (httpResponse.statusCode != 200) {
+            completion(nil, [NSString stringWithFormat:@"HTTP %ld", (long)httpResponse.statusCode]);
+            return;
+        }
+
+        NSError *jsonError;
+        NSDictionary *jsonDict = [NSJSONSerialization JSONObjectWithData:data options:0 error:&jsonError];
+
+        if (jsonError || ![jsonDict isKindOfClass:[NSDictionary class]]) {
+            completion(nil, @"Invalid response format");
+            return;
+        }
+
+        // Parse models array from response
+        NSArray *modelsArray = jsonDict[@"models"];
+        if (![modelsArray isKindOfClass:[NSArray class]]) {
+            completion(nil, @"Missing models array in response");
+            return;
+        }
+
+        NSMutableArray<RAGModelItem *> *models = [NSMutableArray array];
+        for (NSDictionary *item in modelsArray) {
+            if (![item isKindOfClass:[NSDictionary class]]) continue;
+
+            RAGModelItem *model = [[RAGModelItem alloc] init];
+            model.modelId = item[@"id"];
+            model.name = item[@"name"];
+            model.provider = item[@"provider"];
+            if (model.modelId && model.name) {
+                [models addObject:model];
+            }
+        }
+
+        [WALogger info:@"[RAG] Listed %lu models", (unsigned long)models.count];
+        completion(models, nil);
     }];
     [task resume];
 }

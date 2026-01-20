@@ -125,6 +125,9 @@ static const CGFloat kFontSizeStep = 2.0;
 @property (nonatomic, assign) BOOL isCancelled;
 @property (nonatomic, strong) NSArray<NSDictionary *> *mcpTools;
 @property (nonatomic, strong) NSPopUpButton *modelSelector;
+@property (nonatomic, strong) NSPopUpButton *ragModelSelector;  // Model selector for RAG mode
+@property (nonatomic, strong) NSArray<RAGModelItem *> *ragModels;  // Available RAG models from server
+@property (nonatomic, copy) NSString *selectedRAGModelId;  // Currently selected RAG model ID
 @property (nonatomic, assign) BOOL hasTitleBeenGenerated;
 @property (nonatomic, copy) NSString *firstUserMessage;
 @property (nonatomic, strong) NSView *inputContainer;
@@ -229,6 +232,9 @@ static const CGFloat kFontSizeStep = 2.0;
     NSString *ragURL = [SettingsWindowController ragServiceURL];
     self.ragClient = [[RAGClient alloc] initWithBaseURL:ragURL];
     self.ragClient.delegate = self;
+
+    // Fetch available models from the server
+    [self populateRAGModelSelector];
 }
 
 - (void)updateColorsForAppearance {
@@ -309,8 +315,9 @@ static const CGFloat kFontSizeStep = 2.0;
             self.modeIndicator.backgroundColor = [NSColor colorWithRed:0.85 green:0.9 blue:1.0 alpha:1.0];
             self.modeIndicator.textColor = [NSColor colorWithRed:0.2 green:0.4 blue:0.7 alpha:1.0];
         }
-        // Hide model selector in RAG mode (RAG service handles the model)
+        // Show RAG model selector, hide MCP model selector
         self.modelSelector.hidden = YES;
+        self.ragModelSelector.hidden = NO;
     } else {
         self.modeIndicator.stringValue = @"MCP";
         // Green color for MCP mode
@@ -321,8 +328,9 @@ static const CGFloat kFontSizeStep = 2.0;
             self.modeIndicator.backgroundColor = [NSColor colorWithRed:0.85 green:0.95 blue:0.88 alpha:1.0];
             self.modeIndicator.textColor = [NSColor colorWithRed:0.2 green:0.5 blue:0.3 alpha:1.0];
         }
-        // Show model selector in MCP mode
+        // Show MCP model selector, hide RAG model selector
         self.modelSelector.hidden = NO;
+        self.ragModelSelector.hidden = YES;
     }
 }
 
@@ -591,9 +599,8 @@ static const CGFloat kFontSizeStep = 2.0;
     self.modeIndicator.font = [NSFont boldSystemFontOfSize:9];
     self.modeIndicator.alignment = NSTextAlignmentCenter;
     [inputContainer addSubview:self.modeIndicator];
-    [self updateModeIndicator];
 
-    // Model selector dropdown
+    // Model selector dropdown (MCP mode)
     self.modelSelector = [[NSPopUpButton alloc] initWithFrame:NSZeroRect pullsDown:NO];
     self.modelSelector.translatesAutoresizingMaskIntoConstraints = NO;
     self.modelSelector.target = self;
@@ -605,6 +612,22 @@ static const CGFloat kFontSizeStep = 2.0;
     [[self.modelSelector cell] setArrowPosition:NSPopUpArrowAtBottom];
     [self populateModelSelector];
     [inputContainer addSubview:self.modelSelector];
+
+    // RAG model selector dropdown (RAG mode)
+    self.ragModelSelector = [[NSPopUpButton alloc] initWithFrame:NSZeroRect pullsDown:NO];
+    self.ragModelSelector.translatesAutoresizingMaskIntoConstraints = NO;
+    self.ragModelSelector.target = self;
+    self.ragModelSelector.action = @selector(ragModelChanged:);
+    self.ragModelSelector.font = [NSFont systemFontOfSize:11];
+    self.ragModelSelector.controlSize = NSControlSizeSmall;
+    self.ragModelSelector.bordered = NO;
+    self.ragModelSelector.contentTintColor = secondaryTextColor();
+    [[self.ragModelSelector cell] setArrowPosition:NSPopUpArrowAtBottom];
+    [inputContainer addSubview:self.ragModelSelector];
+
+    // Update mode indicator AFTER both selectors are created
+    // This sets the correct visibility based on current mode
+    [self updateModeIndicator];
 
     // Loading indicator
     self.loadingIndicator = [[NSProgressIndicator alloc] initWithFrame:NSZeroRect];
@@ -696,20 +719,29 @@ static const CGFloat kFontSizeStep = 2.0;
         [self.stopButton.centerYAnchor constraintEqualToAnchor:self.sendButton.centerYAnchor]
     ]];
 
-    // Bottom row: status on left, mode indicator and model selector on right
+    // Bottom row: status on left, mode indicator and model selectors on right
+    // Both model selectors share the same position - they toggle visibility
     [NSLayoutConstraint activateConstraints:@[
+        // MCP model selector (right side)
+        [self.modelSelector.trailingAnchor constraintEqualToAnchor:inputContainer.trailingAnchor constant:-10],
+        [self.modelSelector.centerYAnchor constraintEqualToAnchor:self.statusLabel.centerYAnchor],
+
+        // RAG model selector (same position as MCP model selector)
+        [self.ragModelSelector.trailingAnchor constraintEqualToAnchor:inputContainer.trailingAnchor constant:-10],
+        [self.ragModelSelector.centerYAnchor constraintEqualToAnchor:self.statusLabel.centerYAnchor],
+
+        // Status label
         [self.statusLabel.leadingAnchor constraintEqualToAnchor:inputContainer.leadingAnchor constant:20],
         [self.statusLabel.topAnchor constraintEqualToAnchor:self.inputScrollView.bottomAnchor constant:4],
         [self.statusLabel.bottomAnchor constraintEqualToAnchor:inputContainer.bottomAnchor constant:-10],
 
-        // Mode indicator between status and model selector
-        [self.modeIndicator.trailingAnchor constraintEqualToAnchor:self.modelSelector.leadingAnchor constant:-8],
+        // Mode indicator - position it to the left of both selectors using a fixed offset from right edge
+        // This avoids depending on hidden/shown selector widths
+        [self.modeIndicator.trailingAnchor constraintEqualToAnchor:inputContainer.trailingAnchor constant:-130],
         [self.modeIndicator.centerYAnchor constraintEqualToAnchor:self.statusLabel.centerYAnchor],
         [self.modeIndicator.widthAnchor constraintEqualToConstant:36],
         [self.modeIndicator.heightAnchor constraintEqualToConstant:18],
 
-        [self.modelSelector.trailingAnchor constraintEqualToAnchor:inputContainer.trailingAnchor constant:-10],
-        [self.modelSelector.centerYAnchor constraintEqualToAnchor:self.statusLabel.centerYAnchor],
         [self.statusLabel.trailingAnchor constraintLessThanOrEqualToAnchor:self.modeIndicator.leadingAnchor constant:-10]
     ]];
 
@@ -969,6 +1001,124 @@ static const CGFloat kFontSizeStep = 2.0;
         // Add system message about model change
         [self addSystemMessage:[NSString stringWithFormat:@"Switched to %@", displayName]];
     }
+}
+
+- (void)ragModelChanged:(NSPopUpButton *)sender {
+    NSString *selectedModelId = sender.selectedItem.representedObject;
+    if (selectedModelId) {
+        self.selectedRAGModelId = selectedModelId;
+        [[NSUserDefaults standardUserDefaults] setObject:selectedModelId forKey:@"RAGSelectedModel"];
+
+        NSString *displayName = sender.selectedItem.title;
+        [self updateStatus:@"Ready"];
+
+        // Add system message about model change
+        [self addSystemMessage:[NSString stringWithFormat:@"Switched to %@", displayName]];
+    }
+}
+
+- (void)populateRAGModelSelector {
+    [WALogger info:@"[RAG UI] populateRAGModelSelector called"];
+    [self.ragModelSelector removeAllItems];
+
+    // Add placeholder while loading
+    [self.ragModelSelector addItemWithTitle:@"Loading models..."];
+    self.ragModelSelector.enabled = NO;
+
+    // Fetch models from server
+    [self.ragClient listModelsWithCompletion:^(NSArray<RAGModelItem *> *models, NSString *error) {
+        [WALogger info:@"[RAG UI] listModelsWithCompletion returned - models: %lu, error: %@",
+            (unsigned long)models.count, error];
+        dispatch_async(dispatch_get_main_queue(), ^{
+            [self.ragModelSelector removeAllItems];
+
+            if (error) {
+                [WALogger error:@"[RAG] Failed to fetch models: %@", error];
+                [self.ragModelSelector addItemWithTitle:@"Error loading models"];
+                return;
+            }
+
+            if (models.count == 0) {
+                [self.ragModelSelector addItemWithTitle:@"No models available"];
+                return;
+            }
+
+            self.ragModels = models;
+            self.ragModelSelector.enabled = YES;
+
+            // Group models by provider for better organization
+            NSMutableDictionary<NSString *, NSMutableArray<RAGModelItem *> *> *byProvider = [NSMutableDictionary dictionary];
+            for (RAGModelItem *model in models) {
+                NSString *provider = model.provider ?: @"other";
+                if (!byProvider[provider]) {
+                    byProvider[provider] = [NSMutableArray array];
+                }
+                [byProvider[provider] addObject:model];
+            }
+
+            // Add models to selector, grouped by provider
+            NSArray *providerOrder = @[@"gemini", @"anthropic", @"openai", @"other"];
+            NSString *defaultModelId = @"gemini-3-pro";
+            BOOL foundDefault = NO;
+
+            for (NSString *provider in providerOrder) {
+                NSArray<RAGModelItem *> *providerModels = byProvider[provider];
+                if (!providerModels || providerModels.count == 0) continue;
+
+                // Add separator with provider name if we have multiple providers
+                if (byProvider.count > 1 && self.ragModelSelector.numberOfItems > 0) {
+                    [self.ragModelSelector.menu addItem:[NSMenuItem separatorItem]];
+                }
+
+                for (RAGModelItem *model in providerModels) {
+                    // Add provider emoji prefix
+                    NSString *prefix = @"";
+                    if ([model.provider isEqualToString:@"gemini"]) {
+                        prefix = @"\u2728 ";  // sparkles for Gemini
+                    } else if ([model.provider isEqualToString:@"anthropic"]) {
+                        prefix = @"\U0001F9E0 ";  // brain for Anthropic
+                    } else if ([model.provider isEqualToString:@"openai"]) {
+                        prefix = @"\U0001F916 ";  // robot for OpenAI
+                    }
+
+                    NSString *displayName = [NSString stringWithFormat:@"%@%@", prefix, model.name];
+                    [self.ragModelSelector addItemWithTitle:displayName];
+                    self.ragModelSelector.lastItem.representedObject = model.modelId;
+
+                    // Check if this is the default model
+                    if ([model.modelId isEqualToString:defaultModelId]) {
+                        foundDefault = YES;
+                    }
+                }
+            }
+
+            // Select saved model or default
+            NSString *savedModelId = [[NSUserDefaults standardUserDefaults] stringForKey:@"RAGSelectedModel"];
+            NSString *modelToSelect = savedModelId.length > 0 ? savedModelId : defaultModelId;
+
+            // Find and select the model
+            BOOL selected = NO;
+            for (NSMenuItem *item in self.ragModelSelector.itemArray) {
+                if ([item.representedObject isEqualToString:modelToSelect]) {
+                    [self.ragModelSelector selectItem:item];
+                    self.selectedRAGModelId = modelToSelect;
+                    selected = YES;
+                    break;
+                }
+            }
+
+            // If not found, select first non-separator item
+            if (!selected && self.ragModelSelector.numberOfItems > 0) {
+                for (NSMenuItem *item in self.ragModelSelector.itemArray) {
+                    if (!item.isSeparatorItem && item.representedObject) {
+                        [self.ragModelSelector selectItem:item];
+                        self.selectedRAGModelId = item.representedObject;
+                        break;
+                    }
+                }
+            }
+        });
+    }];
 }
 
 
@@ -1642,7 +1792,8 @@ static const CGFloat kFontSizeStep = 2.0;
         [self updateStatus:@"Querying knowledge base..."];
         [self.streamingResponse setString:@""];
         [self createStreamingBubble];  // Create empty bubble for streaming
-        [self.ragClient queryStream:text];
+        // Use selected model for RAG query
+        [self.ragClient queryStream:text k:5 chatFilter:0 model:self.selectedRAGModelId systemPrompt:nil];
     } else {
         [self updateStatus:@"Thinking..."];
         [self.geminiClient sendMessage:text];
@@ -2140,6 +2291,13 @@ static const CGFloat kFontSizeStep = 2.0;
 
 #pragma mark - RAGClientDelegate
 
+- (void)ragClient:(RAGClient *)client didReceiveStatusUpdate:(NSString *)stage message:(NSString *)message {
+    // Update status line with pipeline stage information
+    dispatch_async(dispatch_get_main_queue(), ^{
+        [self updateStatus:message];
+    });
+}
+
 - (void)ragClient:(RAGClient *)client didReceiveStreamChunk:(NSString *)chunk {
     // Use dispatch_sync to ensure UI update completes before processing next chunk
     // This forces the run loop to render each chunk before continuing
@@ -2150,8 +2308,8 @@ static const CGFloat kFontSizeStep = 2.0;
         // Update the streaming bubble with accumulated text
         [self updateStreamingBubble:self.streamingResponse];
 
-        // Update status to show we're receiving data
-        [self updateStatus:@"Receiving response..."];
+        // Update status to show we're generating
+        [self updateStatus:@"Generating response..."];
     });
 }
 
