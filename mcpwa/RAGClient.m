@@ -134,7 +134,7 @@
 #pragma mark - Query
 
 - (void)query:(NSString *)prompt {
-    [self query:prompt k:5 chatFilter:0 model:nil systemPrompt:nil];
+    [self query:prompt k:0 chatFilter:0 model:nil systemPrompt:nil];
 }
 
 - (void)query:(NSString *)prompt k:(NSInteger)k chatFilter:(NSInteger)chatFilter model:(NSString *)model systemPrompt:(NSString *)systemPrompt {
@@ -217,7 +217,7 @@
 #pragma mark - Streaming Query
 
 - (void)queryStream:(NSString *)prompt {
-    [self queryStream:prompt k:5 chatFilter:0 model:nil systemPrompt:nil];
+    [self queryStream:prompt k:0 chatFilter:0 model:nil systemPrompt:nil];
 }
 
 - (void)queryStream:(NSString *)prompt k:(NSInteger)k chatFilter:(NSInteger)chatFilter model:(NSString *)model systemPrompt:(NSString *)systemPrompt {

@@ -1793,7 +1793,7 @@ static const CGFloat kFontSizeStep = 2.0;
         [self.streamingResponse setString:@""];
         [self createStreamingBubble];  // Create empty bubble for streaming
         // Use selected model for RAG query
-        [self.ragClient queryStream:text k:5 chatFilter:0 model:self.selectedRAGModelId systemPrompt:nil];
+        [self.ragClient queryStream:text k:0 chatFilter:0 model:self.selectedRAGModelId systemPrompt:nil];
     } else {
         [self updateStatus:@"Thinking..."];
         [self.geminiClient sendMessage:text];
