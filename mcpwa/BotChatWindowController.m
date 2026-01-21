@@ -137,6 +137,9 @@ static const CGFloat kFontSizeStep = 2.0;
 @property (nonatomic, strong) NSTextView *streamingTextView;   // For live streaming updates with formatting
 @property (nonatomic, strong) NSView *streamingBubbleView;     // The bubble containing streaming text
 @property (nonatomic, assign) CGFloat streamingMaxWidth;       // Max width for streaming text
+@property (nonatomic, strong) NSView *bottomSpacerView;        // Spacer to push prompt to top of view
+@property (nonatomic, strong) NSLayoutConstraint *bottomSpacerHeightConstraint;  // Height constraint for spacer
+@property (nonatomic, weak) NSView *lastUserBubble;            // Reference to last user message bubble for scrolling
 @end
 
 @implementation BotChatWindowController
@@ -224,8 +227,13 @@ static const CGFloat kFontSizeStep = 2.0;
     // Only handle resize for our window
     if (notification.object != self.window) return;
 
-    // Scroll to bottom after resize to keep content visible
-    [self scrollToBottom];
+    // Update bottom spacer height if present (ChatGPT-style scrolling)
+    if (self.bottomSpacerView) {
+        [self updateBottomSpacerHeight];
+    } else {
+        // Scroll to bottom after resize to keep content visible
+        [self scrollToBottom];
+    }
 }
 
 - (void)setupRAGClient {
@@ -1134,6 +1142,9 @@ static const CGFloat kFontSizeStep = 2.0;
 
 - (void)addBotMessage:(NSString *)text {
     NSLog(@"[RAG UI] addBotMessage START, text length: %lu", (unsigned long)text.length);
+    // Remove bottom spacer when bot response arrives (ChatGPT-style)
+    [self removeBottomSpacer];
+
     ChatDisplayMessage *msg = [[ChatDisplayMessage alloc] init];
     msg.type = ChatMessageTypeBot;
     msg.text = text;
@@ -1144,6 +1155,9 @@ static const CGFloat kFontSizeStep = 2.0;
 }
 
 - (void)addFunctionMessage:(NSString *)functionName result:(NSString *)result {
+    // Remove bottom spacer when function message appears (ChatGPT-style)
+    [self removeBottomSpacer];
+
     ChatDisplayMessage *msg = [[ChatDisplayMessage alloc] init];
     msg.type = ChatMessageTypeFunction;
     msg.functionName = functionName;
@@ -1591,13 +1605,25 @@ static const CGFloat kFontSizeStep = 2.0;
     // Container spans full width (margins handled by stackView edgeInsets)
     [bubbleContainer.widthAnchor constraintEqualToAnchor:self.chatStackView.widthAnchor constant:-48].active = YES;
 
-    // Scroll to bottom after layout completes
-    [self scrollToBottom];
+    // ChatGPT-style scrolling: for user messages, add spacer to position prompt at top
+    if (message.type == ChatMessageTypeUser) {
+        self.lastUserBubble = bubbleContainer;
+        // Add spacer after a short delay to allow layout
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.05 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+            [self addBottomSpacerForBubble:bubbleContainer];
+        });
+    } else {
+        // For non-user messages, scroll to bottom as usual
+        [self scrollToBottom];
+    }
 }
 
 #pragma mark - Streaming Message Support
 
 - (void)createStreamingBubble {
+    // Remove bottom spacer when bot response starts (ChatGPT-style)
+    [self removeBottomSpacer];
+
     // Remove any existing streaming bubble
     if (self.streamingBubbleView) {
         [self.streamingBubbleView removeFromSuperview];
@@ -1724,6 +1750,117 @@ static const CGFloat kFontSizeStep = 2.0;
         // We want to scroll so that the bottom of the document is visible
         NSPoint bottomPoint = NSMakePoint(0, 0);
         [documentView scrollPoint:bottomPoint];
+    }
+}
+
+#pragma mark - Prompt-at-Top Scrolling (ChatGPT-style)
+
+- (void)addBottomSpacerForBubble:(NSView *)bubbleView {
+    // Remove existing spacer if any
+    [self removeBottomSpacer];
+
+    // Force layout to get accurate bubble height
+    [self.window layoutIfNeeded];
+
+    // Calculate spacer height accounting for stack view layout:
+    // Stack view has: topInset(16) + bubble + spacing(12) + spacer + bottomInset(16)
+    // Subtract topGap to push bubble down from the very top of the view
+    CGFloat viewHeight = self.chatScrollView.bounds.size.height;
+    CGFloat bubbleHeight = bubbleView.fittingSize.height;
+    CGFloat topInset = 16;      // Stack view top edge inset
+    CGFloat bottomInset = 16;   // Stack view bottom edge inset
+    CGFloat stackSpacing = 12;  // Stack view spacing between items
+    CGFloat spacerHeight = viewHeight - topInset - bubbleHeight - stackSpacing - bottomInset - stackSpacing;
+
+    // Only add spacer if it makes sense (bubble is smaller than view)
+    if (spacerHeight <= 0) {
+        // Bubble is larger than view, just scroll to show the bottom of the bubble
+        [self scrollToBottom];
+        return;
+    }
+
+    // Create spacer view
+    self.bottomSpacerView = [[NSView alloc] initWithFrame:NSZeroRect];
+    self.bottomSpacerView.translatesAutoresizingMaskIntoConstraints = NO;
+
+    // Add to stack view
+    [self.chatStackView addArrangedSubview:self.bottomSpacerView];
+
+    // Set width and height constraints
+    [self.bottomSpacerView.widthAnchor constraintEqualToAnchor:self.chatStackView.widthAnchor constant:-48].active = YES;
+    self.bottomSpacerHeightConstraint = [self.bottomSpacerView.heightAnchor constraintEqualToConstant:spacerHeight];
+    self.bottomSpacerHeightConstraint.active = YES;
+
+    // Scroll to bottom - with the spacer in place, this positions the prompt at the top
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.05 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+        [self scrollToBottomImmediate];
+    });
+}
+
+- (void)scrollToPromptAtTop:(NSView *)bubbleView {
+    [self.window layoutIfNeeded];
+
+    NSClipView *clipView = self.chatScrollView.contentView;
+    NSView *documentView = self.chatScrollView.documentView;
+    if (!documentView || !bubbleView || !clipView) return;
+
+    // Convert bubble's frame to document view coordinates
+    NSRect bubbleFrameInDoc = [bubbleView convertRect:bubbleView.bounds toView:documentView];
+
+    // In non-flipped coordinates (Y increases upward, origin at bottom-left):
+    // - bubbleFrameInDoc.origin.y is the BOTTOM of the bubble
+    // - NSMaxY(bubbleFrameInDoc) is the TOP of the bubble
+    //
+    // We want the TOP of the bubble to appear near the top of the visible area (with some padding).
+    // The clip view's bounds origin determines what part of the document is visible.
+    // Setting bounds.origin.y = Y means Y is at the BOTTOM of the visible area.
+
+    CGFloat visibleHeight = clipView.bounds.size.height;
+    CGFloat topOfBubble = NSMaxY(bubbleFrameInDoc);
+    CGFloat topPadding = 16;  // Padding from the top of the view
+
+    // We want: the top of visible area = topOfBubble + topPadding
+    // Visible area spans from scrollY (bottom) to scrollY + visibleHeight (top)
+    // So: scrollY + visibleHeight = topOfBubble + topPadding
+    // Therefore: scrollY = topOfBubble + topPadding - visibleHeight
+    CGFloat scrollY = topOfBubble + topPadding - visibleHeight;
+
+    // Clamp to valid range
+    CGFloat documentHeight = documentView.bounds.size.height;
+    CGFloat maxScrollY = documentHeight - visibleHeight;
+    if (scrollY < 0) scrollY = 0;
+    if (scrollY > maxScrollY && maxScrollY > 0) scrollY = maxScrollY;
+
+    // Use scrollToPoint on clip view for more reliable scrolling
+    [clipView scrollToPoint:NSMakePoint(0, scrollY)];
+    [self.chatScrollView reflectScrolledClipView:clipView];
+}
+
+- (void)removeBottomSpacer {
+    if (self.bottomSpacerView) {
+        [self.chatStackView removeArrangedSubview:self.bottomSpacerView];
+        [self.bottomSpacerView removeFromSuperview];
+        self.bottomSpacerView = nil;
+        self.bottomSpacerHeightConstraint = nil;
+    }
+}
+
+- (void)updateBottomSpacerHeight {
+    if (!self.bottomSpacerView || !self.lastUserBubble) return;
+
+    [self.window layoutIfNeeded];
+
+    CGFloat viewHeight = self.chatScrollView.bounds.size.height;
+    CGFloat bubbleHeight = self.lastUserBubble.fittingSize.height;
+    CGFloat topInset = 16;
+    CGFloat bottomInset = 16;
+    CGFloat stackSpacing = 12;
+    CGFloat spacerHeight = viewHeight - topInset - bubbleHeight - stackSpacing - bottomInset - stackSpacing;
+
+    if (spacerHeight <= 0) {
+        [self removeBottomSpacer];
+    } else {
+        self.bottomSpacerHeightConstraint.constant = spacerHeight;
     }
 }
 
