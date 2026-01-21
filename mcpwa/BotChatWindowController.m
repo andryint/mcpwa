@@ -140,6 +140,7 @@ static const CGFloat kFontSizeStep = 2.0;
 @property (nonatomic, strong) NSView *bottomSpacerView;        // Spacer to push prompt to top of view
 @property (nonatomic, strong) NSLayoutConstraint *bottomSpacerHeightConstraint;  // Height constraint for spacer
 @property (nonatomic, weak) NSView *lastUserBubble;            // Reference to last user message bubble for scrolling
+@property (nonatomic, assign) CGFloat lastResponseBubbleHeight; // Track previous response height for delta calculation
 @end
 
 @implementation BotChatWindowController
@@ -1142,28 +1143,26 @@ static const CGFloat kFontSizeStep = 2.0;
 
 - (void)addBotMessage:(NSString *)text {
     NSLog(@"[RAG UI] addBotMessage START, text length: %lu", (unsigned long)text.length);
-    // Remove bottom spacer when bot response arrives (ChatGPT-style)
-    [self removeBottomSpacer];
-
     ChatDisplayMessage *msg = [[ChatDisplayMessage alloc] init];
     msg.type = ChatMessageTypeBot;
     msg.text = text;
     [self.messages addObject:msg];
     NSLog(@"[RAG UI] addBotMessage calling addMessageBubble");
     [self addMessageBubble:msg];
+    // Update spacer after adding content
+    [self updateSpacerForCurrentContent];
     NSLog(@"[RAG UI] addBotMessage END");
 }
 
 - (void)addFunctionMessage:(NSString *)functionName result:(NSString *)result {
-    // Remove bottom spacer when function message appears (ChatGPT-style)
-    [self removeBottomSpacer];
-
     ChatDisplayMessage *msg = [[ChatDisplayMessage alloc] init];
     msg.type = ChatMessageTypeFunction;
     msg.functionName = functionName;
     msg.text = result;
     [self.messages addObject:msg];
     [self addMessageBubble:msg];
+    // Update spacer after adding content
+    [self updateSpacerForCurrentContent];
 }
 
 - (void)addSystemMessage:(NSString *)text {
@@ -1599,8 +1598,13 @@ static const CGFloat kFontSizeStep = 2.0;
         [bubble.bottomAnchor constraintEqualToAnchor:bubbleContainer.bottomAnchor]
     ]];
 
-    // Add to stack view first, then set width constraint (views must be in same hierarchy)
-    [self.chatStackView addArrangedSubview:bubbleContainer];
+    // Add to stack view - insert before spacer if present (for non-user messages)
+    if (message.type != ChatMessageTypeUser && self.bottomSpacerView) {
+        NSUInteger spacerIndex = [self.chatStackView.arrangedSubviews indexOfObject:self.bottomSpacerView];
+        [self.chatStackView insertArrangedSubview:bubbleContainer atIndex:spacerIndex];
+    } else {
+        [self.chatStackView addArrangedSubview:bubbleContainer];
+    }
 
     // Container spans full width (margins handled by stackView edgeInsets)
     [bubbleContainer.widthAnchor constraintEqualToAnchor:self.chatStackView.widthAnchor constant:-48].active = YES;
@@ -1612,17 +1616,17 @@ static const CGFloat kFontSizeStep = 2.0;
         dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.05 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
             [self addBottomSpacerForBubble:bubbleContainer];
         });
-    } else {
-        // For non-user messages, scroll to bottom as usual
-        [self scrollToBottom];
     }
+    // Don't scroll for non-user messages - keep prompt position stable during generation
 }
 
 #pragma mark - Streaming Message Support
 
 - (void)createStreamingBubble {
-    // Remove bottom spacer when bot response starts (ChatGPT-style)
-    [self removeBottomSpacer];
+    // Don't remove spacer yet - we'll shrink it as content grows
+
+    // Reset response height tracking for new streaming session
+    self.lastResponseBubbleHeight = 0;
 
     // Remove any existing streaming bubble
     if (self.streamingBubbleView) {
@@ -1680,15 +1684,22 @@ static const CGFloat kFontSizeStep = 2.0;
         [bubble.bottomAnchor constraintEqualToAnchor:bubbleContainer.bottomAnchor]
     ]];
 
-    // Add to stack view
-    [self.chatStackView addArrangedSubview:bubbleContainer];
+    // Add to stack view - insert before spacer if present
+    if (self.bottomSpacerView) {
+        NSUInteger spacerIndex = [self.chatStackView.arrangedSubviews indexOfObject:self.bottomSpacerView];
+        [self.chatStackView insertArrangedSubview:bubbleContainer atIndex:spacerIndex];
+    } else {
+        [self.chatStackView addArrangedSubview:bubbleContainer];
+    }
     [bubbleContainer.widthAnchor constraintEqualToAnchor:self.chatStackView.widthAnchor constant:-48].active = YES;
 
     // Store references for updates
     self.streamingBubbleView = bubbleContainer;
     self.streamingTextView = textView;
 
-    [self scrollToBottom];
+    // Update spacer height now that we have new content
+    [self updateSpacerForCurrentContent];
+    // Don't scroll during generation - keep prompt position stable
 }
 
 - (void)updateStreamingBubble:(NSString *)text {
@@ -1715,14 +1726,16 @@ static const CGFloat kFontSizeStep = 2.0;
     [self.streamingBubbleView setNeedsLayout:YES];
     [self.streamingBubbleView layoutSubtreeIfNeeded];
 
+    // Update spacer as content grows
+    [self updateSpacerForCurrentContent];
+
     // Force window to display NOW and process the display
     [self.window display];
 
     // Process any pending display operations in the run loop
     // This is critical - it actually flushes the graphics to screen
     CFRunLoopRunInMode(kCFRunLoopDefaultMode, 0.001, false);
-
-    [self scrollToBottomImmediate];
+    // Don't scroll during generation - keep prompt position stable
 }
 
 - (void)finalizeStreamingBubble {
@@ -1842,6 +1855,45 @@ static const CGFloat kFontSizeStep = 2.0;
         [self.bottomSpacerView removeFromSuperview];
         self.bottomSpacerView = nil;
         self.bottomSpacerHeightConstraint = nil;
+        self.lastUserBubble = nil;
+    }
+}
+
+- (void)updateSpacerForCurrentContent {
+    // Shrink spacer by the DELTA of response bubble height growth
+    if (!self.bottomSpacerView) return;
+
+    [self.window layoutIfNeeded];
+
+    // Get current response bubble height (streaming bubble during generation)
+    CGFloat currentResponseHeight = 0;
+
+    if (self.streamingBubbleView) {
+        currentResponseHeight = self.streamingBubbleView.fittingSize.height;
+    }
+
+    // On first call (lastResponseBubbleHeight == 0), just record the initial height.
+    // Don't shrink spacer yet - the spacer was sized to position the prompt correctly.
+    if (self.lastResponseBubbleHeight == 0) {
+        self.lastResponseBubbleHeight = currentResponseHeight;
+        return;
+    }
+
+    // Calculate how much the response has grown since last update
+    CGFloat heightDelta = currentResponseHeight - self.lastResponseBubbleHeight;
+    self.lastResponseBubbleHeight = currentResponseHeight;
+
+    // Only shrink spacer if response grew
+    if (heightDelta > 0) {
+        CGFloat currentSpacerHeight = self.bottomSpacerHeightConstraint.constant;
+        CGFloat newSpacerHeight = currentSpacerHeight - heightDelta;
+
+        if (newSpacerHeight <= 0) {
+            // Response has grown to fill the space - remove spacer
+            [self removeBottomSpacer];
+        } else {
+            self.bottomSpacerHeightConstraint.constant = newSpacerHeight;
+        }
     }
 }
 
