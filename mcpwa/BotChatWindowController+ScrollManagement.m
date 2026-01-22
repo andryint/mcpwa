@@ -36,22 +36,35 @@
     // Remove existing spacer if any
     [self removeBottomSpacer];
 
-    // Force layout to get accurate bubble height
+    // Force layout to get accurate heights
     [self.window layoutIfNeeded];
 
     // Calculate spacer height accounting for stack view layout:
-    // Stack view has: topInset(16) + bubble + spacing(12) + spacer + bottomInset(16)
-    // Subtract topGap to push bubble down from the very top of the view
+    // Stack view has: topInset(16) + bubble + spacing(12) + [other content] + spacer + bottomInset(16)
     CGFloat viewHeight = self.chatScrollView.bounds.size.height;
     CGFloat bubbleHeight = bubbleView.fittingSize.height;
     CGFloat topInset = 16;      // Stack view top edge inset
     CGFloat bottomInset = 16;   // Stack view bottom edge inset
     CGFloat stackSpacing = 12;  // Stack view spacing between items
-    CGFloat spacerHeight = viewHeight - topInset - bubbleHeight - stackSpacing - bottomInset - stackSpacing;
 
-    // Only add spacer if it makes sense (bubble is smaller than view)
+    // Calculate total height of any content between user bubble and where spacer will be
+    // This includes streaming bubble if present
+    CGFloat additionalContentHeight = 0;
+    NSArray *arrangedSubviews = self.chatStackView.arrangedSubviews;
+    NSUInteger userBubbleIndex = [arrangedSubviews indexOfObject:bubbleView];
+    if (userBubbleIndex != NSNotFound) {
+        for (NSUInteger i = userBubbleIndex + 1; i < arrangedSubviews.count; i++) {
+            NSView *view = arrangedSubviews[i];
+            additionalContentHeight += view.fittingSize.height + stackSpacing;
+        }
+    }
+
+    // Add extra spacing to fully hide previous content (the spacing between previous bubble and user bubble)
+    CGFloat spacerHeight = viewHeight - topInset - bubbleHeight - stackSpacing - additionalContentHeight - bottomInset;
+
+    // Only add spacer if it makes sense (content is smaller than view)
     if (spacerHeight <= 0) {
-        // Bubble is larger than view, just scroll to show the bottom of the bubble
+        // Content is larger than view, just scroll to show the bottom
         [self scrollToBottom];
         return;
     }
