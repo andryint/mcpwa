@@ -13,16 +13,17 @@
 #import "BotChatWindowController.h"
 #import "DebugConfigWindowController.h"
 #import "SettingsWindowController.h"
-#import "RAGClient.h"
 
 @interface AppDelegate ()
 @property (nonatomic, strong) BotChatWindowController *botChatController;
+@property (nonatomic, weak) NSMenuItem *debugMenuItem;
 @end
 
 @implementation AppDelegate
 
 - (void)applicationDidFinishLaunching:(NSNotification *)notification {
     [self setupLogWindow];
+    [self setupDebugMenu];
     [self checkInitialStatus];
 
     // Apply saved theme preference
@@ -37,6 +38,29 @@
     // Show Bot Chat as main window
     self.botChatController = [BotChatWindowController sharedController];
     [self.botChatController showWindow];
+}
+
+- (void)setupDebugMenu {
+    // Find and store reference to Debug menu, hide it by default
+    NSMenu *mainMenu = [NSApp mainMenu];
+    for (NSMenuItem *item in mainMenu.itemArray) {
+        if ([item.title isEqualToString:@"Debug"]) {
+            self.debugMenuItem = item;
+            item.hidden = YES;
+            break;
+        }
+    }
+
+    // Add global keyboard shortcut Shift+F1 to toggle Debug menu
+    [NSEvent addLocalMonitorForEventsMatchingMask:NSEventMaskKeyDown handler:^NSEvent *(NSEvent *event) {
+        // Check for Shift+F1
+        if ((event.modifierFlags & NSEventModifierFlagShift) &&
+            event.keyCode == 122) { // 122 is F1 key code
+            [self toggleDebugMenu:nil];
+            return nil; // Consume the event
+        }
+        return event;
+    }];
 }
 
 - (void)setupLogWindow {
@@ -119,9 +143,6 @@
     // Check if accessibility is trusted
     BOOL hasPermission = AXIsProcessTrusted();
 
-    // Check screen recording permission (required on macOS Sonoma+ for some AX operations)
-    BOOL hasScreenRecording = CGPreflightScreenCaptureAccess();
-
     BOOL isAvailable = [wa isWhatsAppAvailable];
 
     // If not available on first check, try to ensure WhatsApp is visible
@@ -136,9 +157,6 @@
     [self appendLog:[NSString stringWithFormat:@"  • Accessibility permission: %@",
                      hasPermission ? @"✅ Granted" : @"❌ Not granted"]
               color:hasPermission ? NSColor.greenColor : NSColor.redColor];
-    [self appendLog:[NSString stringWithFormat:@"  • Screen Recording permission: %@",
-                     hasScreenRecording ? @"✅ Granted" : @"⚠️ Not granted (may be needed)"]
-              color:hasScreenRecording ? NSColor.greenColor : NSColor.yellowColor];
     [self appendLog:[NSString stringWithFormat:@"  • WhatsApp accessible: %@",
                      isAvailable ? @"✅ Yes" : @"⚠️ No"]
               color:isAvailable ? NSColor.greenColor : NSColor.yellowColor];
@@ -155,10 +173,6 @@
 
     if (hasPermission && !isAvailable) {
         [self appendLog:@"ℹ️  Launch WhatsApp Desktop to enable message reading" color:NSColor.systemBlueColor];
-        if (!hasScreenRecording) {
-            [self appendLog:@"   If WhatsApp is running, try granting Screen Recording permission:" color:NSColor.systemBlueColor];
-            [self appendLog:@"   System Settings → Privacy & Security → Screen Recording" color:NSColor.systemBlueColor];
-        }
         [self appendLog:@""];
     }
 }
@@ -551,41 +565,6 @@
     });
 }
 
-- (IBAction)debugListRAGModels:(id)sender {
-    NSString *ragURL = [SettingsWindowController ragServiceURL];
-    RAGClient *client = [[RAGClient alloc] initWithBaseURL:ragURL];
-
-    [WALogger info:@"[Debug] Fetching RAG models from %@", ragURL];
-
-    [client listModelsWithCompletion:^(NSArray<RAGModelItem *> *models, NSString *error) {
-        dispatch_async(dispatch_get_main_queue(), ^{
-            NSAlert *alert = [[NSAlert alloc] init];
-
-            if (error) {
-                alert.messageText = @"Error Loading Models";
-                alert.informativeText = [NSString stringWithFormat:@"Failed to fetch models from %@/models\n\nError: %@", ragURL, error];
-                alert.alertStyle = NSAlertStyleWarning;
-            } else if (models.count == 0) {
-                alert.messageText = @"No Models Found";
-                alert.informativeText = [NSString stringWithFormat:@"The server at %@/models returned an empty list.", ragURL];
-                alert.alertStyle = NSAlertStyleInformational;
-            } else {
-                alert.messageText = [NSString stringWithFormat:@"Found %lu Models", (unsigned long)models.count];
-
-                NSMutableString *modelList = [NSMutableString string];
-                for (RAGModelItem *model in models) {
-                    [modelList appendFormat:@"• %@ (%@)\n  ID: %@\n\n", model.name, model.provider, model.modelId];
-                }
-                alert.informativeText = modelList;
-                alert.alertStyle = NSAlertStyleInformational;
-            }
-
-            [alert addButtonWithTitle:@"OK"];
-            [alert runModal];
-        });
-    }];
-}
-
 #pragma mark - Chat Filter Debug Actions
 
 - (IBAction)debugGetChatFilter:(id)sender {
@@ -665,6 +644,14 @@
 - (IBAction)showSettings:(id)sender {
     // Open the Settings window for user preferences
     [[SettingsWindowController sharedController] showWindow];
+}
+
+#pragma mark - Debug Menu Toggle
+
+- (IBAction)toggleDebugMenu:(id)sender {
+    if (self.debugMenuItem) {
+        self.debugMenuItem.hidden = !self.debugMenuItem.hidden;
+    }
 }
 
 @end

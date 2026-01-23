@@ -154,12 +154,6 @@
                                 <modifierMask key="keyEquivalentModifierMask"/>
                                 <menu key="submenu" title="Window" systemMenu="window" id="Td7-aD-5lo">
                                     <items>
-                                        <menuItem title="Log Window" keyEquivalent="b" id="bot-cht-001" userLabel="Log Window">
-                                            <connections>
-                                                <action selector="toggleLogWindow:" target="Voe-Tx-rLC" id="bot-cht-act"/>
-                                            </connections>
-                                        </menuItem>
-                                        <menuItem isSeparatorItem="YES" id="bot-cht-sep"/>
                                         <menuItem title="Minimize" keyEquivalent="m" id="OY7-WF-poV">
                                             <connections>
                                                 <action selector="performMiniaturize:" target="Ady-hI-5gd" id="VwT-WD-YPe"/>
@@ -197,186 +191,193 @@
                                 <modifierMask key="keyEquivalentModifierMask"/>
                                 <menu key="submenu" title="Debug" id="rZW-gQ-ylh">
                                     <items>
-                                        <menuItem title="Check Status" id="chk-st-001" userLabel="Check Status">
-                                            <modifierMask key="keyEquivalentModifierMask"/>
+                                        <menuItem title="Log Window" keyEquivalent="b" id="dbg-log-001" userLabel="Log Window">
                                             <connections>
-                                                <action selector="checkPermissions:" target="Voe-Tx-rLC" id="chk-st-act"/>
+                                                <action selector="toggleLogWindow:" target="Voe-Tx-rLC" id="dbg-log-act"/>
                                             </connections>
                                         </menuItem>
-                                        <menuItem isSeparatorItem="YES" id="chk-st-sep"/>
-                                        <menuItem title="Explore" id="L2Q-oU-zuO">
+                                        <menuItem isSeparatorItem="YES" id="dbg-log-sep"/>
+                                        <menuItem title="WhatsApp AX" id="wa-ax-mnu-001" userLabel="WhatsApp AX">
                                             <modifierMask key="keyEquivalentModifierMask"/>
-                                            <connections>
-                                                <action selector="debugExplore:" target="Voe-Tx-rLC" id="s3u-8V-k4X"/>
-                                            </connections>
-                                        </menuItem>
-                                        <menuItem title="Run Tests" id="D2X-8y-iec">
-                                            <modifierMask key="keyEquivalentModifierMask"/>
-                                            <connections>
-                                                <action selector="debugRunTests:" target="Voe-Tx-rLC" id="LVq-Yu-4NS"/>
-                                            </connections>
-                                        </menuItem>
-                                        <menuItem title="List of Chats" id="RCj-7j-dpT" userLabel="List of Chats">
-                                            <modifierMask key="keyEquivalentModifierMask"/>
-                                            <connections>
-                                                <action selector="debugReadChatList:" target="Voe-Tx-rLC" id="zkV-nx-BBb"/>
-                                            </connections>
-                                        </menuItem>
-                                        <menuItem title="List RAG Models" id="rag-mdl-001" userLabel="List RAG Models">
-                                            <modifierMask key="keyEquivalentModifierMask"/>
-                                            <connections>
-                                                <action selector="debugListRAGModels:" target="Voe-Tx-rLC" id="rag-mdl-act"/>
-                                            </connections>
-                                        </menuItem>
-                                        <menuItem title="Open Chat" id="j5i-pi-tGQ">
-                                            <modifierMask key="keyEquivalentModifierMask"/>
-                                            <connections>
-                                                <action selector="debugOpenChat:" target="Voe-Tx-rLC" id="dWh-CT-r3p"/>
-                                            </connections>
-                                        </menuItem>
-                                        <menuItem title="Get Current Chat " id="nhp-Rs-EZ5" userLabel="Get Current Chat">
-                                            <modifierMask key="keyEquivalentModifierMask"/>
-                                            <connections>
-                                                <action selector="debugGetCurrentChat:" target="Voe-Tx-rLC" id="e4f-xZ-rYR"/>
-                                            </connections>
-                                        </menuItem>
-                                        <menuItem title="Global Search" id="Wdg-qK-8kG">
-                                            <modifierMask key="keyEquivalentModifierMask"/>
-                                            <connections>
-                                                <action selector="debugGlobalSearchCustom:" target="Voe-Tx-rLC" id="VoT-S7-2I2"/>
-                                            </connections>
-                                        </menuItem>
-                                        <menuItem title="Clear Search" id="wPE-gv-sjg" userLabel="Clear Search">
-                                            <modifierMask key="keyEquivalentModifierMask"/>
-                                            <connections>
-                                                <action selector="debugClearSearch:" target="Voe-Tx-rLC" id="uuj-qL-fe2"/>
-                                            </connections>
-                                        </menuItem>
-                                        <menuItem title="Get Search Results" id="hUZ-0f-IoM" userLabel="Get Search Results">
-                                            <modifierMask key="keyEquivalentModifierMask"/>
-                                            <connections>
-                                                <action selector="debugGetSearchResults:" target="Voe-Tx-rLC" id="yD4-sa-Mc2"/>
-                                            </connections>
-                                        </menuItem>
-                                        <menuItem title="Search and Parse" id="BVO-T3-to5" userLabel="Search and Parse">
-                                            <modifierMask key="keyEquivalentModifierMask"/>
-                                            <connections>
-                                                <action selector="debugSearchAndParse:" target="Voe-Tx-rLC" id="Qkb-DZ-0Lr"/>
-                                            </connections>
-                                        </menuItem>
-                                        <menuItem title="Search Result #0" id="v6U-TO-PSp" userLabel="Search Result #0">
-                                            <modifierMask key="keyEquivalentModifierMask"/>
-                                            <connections>
-                                                <action selector="debugClickResult0:" target="Voe-Tx-rLC" id="gTh-sd-Leb"/>
-                                            </connections>
-                                        </menuItem>
-                                        <menuItem title="Search Result #1" id="4Hr-wE-C9D" userLabel="Search Result #1">
-                                            <modifierMask key="keyEquivalentModifierMask"/>
-                                            <connections>
-                                                <action selector="debugClickResult1:" target="Voe-Tx-rLC" id="S1W-QP-z8B"/>
-                                            </connections>
-                                        </menuItem>
-                                        <menuItem title="Search Result #2" id="Urv-WF-1ch" userLabel="Search Result #2">
-                                            <modifierMask key="keyEquivalentModifierMask"/>
-                                            <connections>
-                                                <action selector="debugClickResult2:" target="Voe-Tx-rLC" id="d0n-9e-T6a"/>
-                                            </connections>
-                                        </menuItem>
-                                        <menuItem title="Test Parsing" id="awW-3k-fzV" userLabel="Test Parsing">
-                                            <modifierMask key="keyEquivalentModifierMask"/>
-                                            <connections>
-                                                <action selector="debugTestParsing:" target="Voe-Tx-rLC" id="C4Q-9N-1KZ"/>
-                                            </connections>
-                                        </menuItem>
-                                        <menuItem isSeparatorItem="YES" id="zUO-oY-eaE"/>
-                                        <menuItem title="Press ESC" id="jZQ-yf-Amw" userLabel="Press ESC">
-                                            <modifierMask key="keyEquivalentModifierMask"/>
-                                            <connections>
-                                                <action selector="debugClickEsc:" target="Voe-Tx-rLC" id="cBT-7s-kHa"/>
-                                            </connections>
-                                        </menuItem>
-                                        <menuItem title="Press Cmd+F" id="bxg-UW-8Nj" userLabel="Press Cmd+F">
-                                            <modifierMask key="keyEquivalentModifierMask"/>
-                                            <connections>
-                                                <action selector="debugClickCmdF:" target="Voe-Tx-rLC" id="iMa-2B-z8t"/>
-                                            </connections>
-                                        </menuItem>
-                                        <menuItem title="Press A" id="CiV-0l-6qi" userLabel="Press A">
-                                            <modifierMask key="keyEquivalentModifierMask"/>
-                                            <connections>
-                                                <action selector="debugClickA:" target="Voe-Tx-rLC" id="4Jv-kS-LfZ"/>
-                                            </connections>
-                                        </menuItem>
-                                        <menuItem title="Press X" id="1ad-RX-4x2">
-                                            <modifierMask key="keyEquivalentModifierMask"/>
-                                            <connections>
-                                                <action selector="debugClickX:" target="Voe-Tx-rLC" id="DJS-jm-T67"/>
-                                            </connections>
-                                        </menuItem>
-                                        <menuItem title="Typein ABC" id="wqf-Ta-FYV" userLabel="Typein ABC">
-                                            <modifierMask key="keyEquivalentModifierMask"/>
-                                            <connections>
-                                                <action selector="debugTypeInABC:" target="Voe-Tx-rLC" id="zdp-1C-2fq"/>
-                                            </connections>
-                                        </menuItem>
-                                        <menuItem isSeparatorItem="YES" id="flt-sep-001"/>
-                                        <menuItem title="Chat Filters" id="flt-mnu-001" userLabel="Chat Filters">
-                                            <modifierMask key="keyEquivalentModifierMask"/>
-                                            <menu key="submenu" title="Chat Filters" id="flt-sub-001">
+                                            <menu key="submenu" title="WhatsApp AX" id="wa-ax-sub-001">
                                                 <items>
-                                                    <menuItem title="Get Current Filter" id="flt-get-001" userLabel="Get Current Filter">
+                                                    <menuItem title="Check Status" id="chk-st-001" userLabel="Check Status">
                                                         <modifierMask key="keyEquivalentModifierMask"/>
                                                         <connections>
-                                                            <action selector="debugGetChatFilter:" target="Voe-Tx-rLC" id="flt-get-act"/>
+                                                            <action selector="checkPermissions:" target="Voe-Tx-rLC" id="chk-st-act"/>
                                                         </connections>
                                                     </menuItem>
-                                                    <menuItem isSeparatorItem="YES" id="flt-sep-002"/>
-                                                    <menuItem title="Set Filter: All" id="flt-all-001" userLabel="Set Filter All">
+                                                    <menuItem isSeparatorItem="YES" id="chk-st-sep"/>
+                                                    <menuItem title="Explore" id="L2Q-oU-zuO">
                                                         <modifierMask key="keyEquivalentModifierMask"/>
                                                         <connections>
-                                                            <action selector="debugSetFilterAll:" target="Voe-Tx-rLC" id="flt-all-act"/>
+                                                            <action selector="debugExplore:" target="Voe-Tx-rLC" id="s3u-8V-k4X"/>
                                                         </connections>
                                                     </menuItem>
-                                                    <menuItem title="Set Filter: Unread" id="flt-unr-001" userLabel="Set Filter Unread">
+                                                    <menuItem title="Run Tests" id="D2X-8y-iec">
                                                         <modifierMask key="keyEquivalentModifierMask"/>
                                                         <connections>
-                                                            <action selector="debugSetFilterUnread:" target="Voe-Tx-rLC" id="flt-unr-act"/>
+                                                            <action selector="debugRunTests:" target="Voe-Tx-rLC" id="LVq-Yu-4NS"/>
                                                         </connections>
                                                     </menuItem>
-                                                    <menuItem title="Set Filter: Favorites" id="flt-fav-001" userLabel="Set Filter Favorites">
+                                                    <menuItem title="List of Chats" id="RCj-7j-dpT" userLabel="List of Chats">
                                                         <modifierMask key="keyEquivalentModifierMask"/>
                                                         <connections>
-                                                            <action selector="debugSetFilterFavorites:" target="Voe-Tx-rLC" id="flt-fav-act"/>
+                                                            <action selector="debugReadChatList:" target="Voe-Tx-rLC" id="zkV-nx-BBb"/>
                                                         </connections>
                                                     </menuItem>
-                                                    <menuItem title="Set Filter: Groups" id="flt-grp-001" userLabel="Set Filter Groups">
+                                                    <menuItem title="Open Chat" id="j5i-pi-tGQ">
                                                         <modifierMask key="keyEquivalentModifierMask"/>
                                                         <connections>
-                                                            <action selector="debugSetFilterGroups:" target="Voe-Tx-rLC" id="flt-grp-act"/>
+                                                            <action selector="debugOpenChat:" target="Voe-Tx-rLC" id="dWh-CT-r3p"/>
                                                         </connections>
                                                     </menuItem>
-                                                    <menuItem isSeparatorItem="YES" id="flt-sep-003"/>
-                                                    <menuItem title="List Chats With Filter..." id="flt-lst-001" userLabel="List Chats With Filter">
+                                                    <menuItem title="Get Current Chat " id="nhp-Rs-EZ5" userLabel="Get Current Chat">
                                                         <modifierMask key="keyEquivalentModifierMask"/>
                                                         <connections>
-                                                            <action selector="debugListChatsWithFilter:" target="Voe-Tx-rLC" id="flt-lst-act"/>
+                                                            <action selector="debugGetCurrentChat:" target="Voe-Tx-rLC" id="e4f-xZ-rYR"/>
+                                                        </connections>
+                                                    </menuItem>
+                                                    <menuItem title="Global Search" id="Wdg-qK-8kG">
+                                                        <modifierMask key="keyEquivalentModifierMask"/>
+                                                        <connections>
+                                                            <action selector="debugGlobalSearchCustom:" target="Voe-Tx-rLC" id="VoT-S7-2I2"/>
+                                                        </connections>
+                                                    </menuItem>
+                                                    <menuItem title="Clear Search" id="wPE-gv-sjg" userLabel="Clear Search">
+                                                        <modifierMask key="keyEquivalentModifierMask"/>
+                                                        <connections>
+                                                            <action selector="debugClearSearch:" target="Voe-Tx-rLC" id="uuj-qL-fe2"/>
+                                                        </connections>
+                                                    </menuItem>
+                                                    <menuItem title="Get Search Results" id="hUZ-0f-IoM" userLabel="Get Search Results">
+                                                        <modifierMask key="keyEquivalentModifierMask"/>
+                                                        <connections>
+                                                            <action selector="debugGetSearchResults:" target="Voe-Tx-rLC" id="yD4-sa-Mc2"/>
+                                                        </connections>
+                                                    </menuItem>
+                                                    <menuItem title="Search and Parse" id="BVO-T3-to5" userLabel="Search and Parse">
+                                                        <modifierMask key="keyEquivalentModifierMask"/>
+                                                        <connections>
+                                                            <action selector="debugSearchAndParse:" target="Voe-Tx-rLC" id="Qkb-DZ-0Lr"/>
+                                                        </connections>
+                                                    </menuItem>
+                                                    <menuItem title="Search Result #0" id="v6U-TO-PSp" userLabel="Search Result #0">
+                                                        <modifierMask key="keyEquivalentModifierMask"/>
+                                                        <connections>
+                                                            <action selector="debugClickResult0:" target="Voe-Tx-rLC" id="gTh-sd-Leb"/>
+                                                        </connections>
+                                                    </menuItem>
+                                                    <menuItem title="Search Result #1" id="4Hr-wE-C9D" userLabel="Search Result #1">
+                                                        <modifierMask key="keyEquivalentModifierMask"/>
+                                                        <connections>
+                                                            <action selector="debugClickResult1:" target="Voe-Tx-rLC" id="S1W-QP-z8B"/>
+                                                        </connections>
+                                                    </menuItem>
+                                                    <menuItem title="Search Result #2" id="Urv-WF-1ch" userLabel="Search Result #2">
+                                                        <modifierMask key="keyEquivalentModifierMask"/>
+                                                        <connections>
+                                                            <action selector="debugClickResult2:" target="Voe-Tx-rLC" id="d0n-9e-T6a"/>
+                                                        </connections>
+                                                    </menuItem>
+                                                    <menuItem title="Test Parsing" id="awW-3k-fzV" userLabel="Test Parsing">
+                                                        <modifierMask key="keyEquivalentModifierMask"/>
+                                                        <connections>
+                                                            <action selector="debugTestParsing:" target="Voe-Tx-rLC" id="C4Q-9N-1KZ"/>
+                                                        </connections>
+                                                    </menuItem>
+                                                    <menuItem isSeparatorItem="YES" id="zUO-oY-eaE"/>
+                                                    <menuItem title="Press ESC" id="jZQ-yf-Amw" userLabel="Press ESC">
+                                                        <modifierMask key="keyEquivalentModifierMask"/>
+                                                        <connections>
+                                                            <action selector="debugClickEsc:" target="Voe-Tx-rLC" id="cBT-7s-kHa"/>
+                                                        </connections>
+                                                    </menuItem>
+                                                    <menuItem title="Press Cmd+F" id="bxg-UW-8Nj" userLabel="Press Cmd+F">
+                                                        <modifierMask key="keyEquivalentModifierMask"/>
+                                                        <connections>
+                                                            <action selector="debugClickCmdF:" target="Voe-Tx-rLC" id="iMa-2B-z8t"/>
+                                                        </connections>
+                                                    </menuItem>
+                                                    <menuItem title="Press A" id="CiV-0l-6qi" userLabel="Press A">
+                                                        <modifierMask key="keyEquivalentModifierMask"/>
+                                                        <connections>
+                                                            <action selector="debugClickA:" target="Voe-Tx-rLC" id="4Jv-kS-LfZ"/>
+                                                        </connections>
+                                                    </menuItem>
+                                                    <menuItem title="Press X" id="1ad-RX-4x2">
+                                                        <modifierMask key="keyEquivalentModifierMask"/>
+                                                        <connections>
+                                                            <action selector="debugClickX:" target="Voe-Tx-rLC" id="DJS-jm-T67"/>
+                                                        </connections>
+                                                    </menuItem>
+                                                    <menuItem title="Typein ABC" id="wqf-Ta-FYV" userLabel="Typein ABC">
+                                                        <modifierMask key="keyEquivalentModifierMask"/>
+                                                        <connections>
+                                                            <action selector="debugTypeInABC:" target="Voe-Tx-rLC" id="zdp-1C-2fq"/>
+                                                        </connections>
+                                                    </menuItem>
+                                                    <menuItem isSeparatorItem="YES" id="flt-sep-001"/>
+                                                    <menuItem title="Chat Filters" id="flt-mnu-001" userLabel="Chat Filters">
+                                                        <modifierMask key="keyEquivalentModifierMask"/>
+                                                        <menu key="submenu" title="Chat Filters" id="flt-sub-001">
+                                                            <items>
+                                                                <menuItem title="Get Current Filter" id="flt-get-001" userLabel="Get Current Filter">
+                                                                    <modifierMask key="keyEquivalentModifierMask"/>
+                                                                    <connections>
+                                                                        <action selector="debugGetChatFilter:" target="Voe-Tx-rLC" id="flt-get-act"/>
+                                                                    </connections>
+                                                                </menuItem>
+                                                                <menuItem isSeparatorItem="YES" id="flt-sep-002"/>
+                                                                <menuItem title="Set Filter: All" id="flt-all-001" userLabel="Set Filter All">
+                                                                    <modifierMask key="keyEquivalentModifierMask"/>
+                                                                    <connections>
+                                                                        <action selector="debugSetFilterAll:" target="Voe-Tx-rLC" id="flt-all-act"/>
+                                                                    </connections>
+                                                                </menuItem>
+                                                                <menuItem title="Set Filter: Unread" id="flt-unr-001" userLabel="Set Filter Unread">
+                                                                    <modifierMask key="keyEquivalentModifierMask"/>
+                                                                    <connections>
+                                                                        <action selector="debugSetFilterUnread:" target="Voe-Tx-rLC" id="flt-unr-act"/>
+                                                                    </connections>
+                                                                </menuItem>
+                                                                <menuItem title="Set Filter: Favorites" id="flt-fav-001" userLabel="Set Filter Favorites">
+                                                                    <modifierMask key="keyEquivalentModifierMask"/>
+                                                                    <connections>
+                                                                        <action selector="debugSetFilterFavorites:" target="Voe-Tx-rLC" id="flt-fav-act"/>
+                                                                    </connections>
+                                                                </menuItem>
+                                                                <menuItem title="Set Filter: Groups" id="flt-grp-001" userLabel="Set Filter Groups">
+                                                                    <modifierMask key="keyEquivalentModifierMask"/>
+                                                                    <connections>
+                                                                        <action selector="debugSetFilterGroups:" target="Voe-Tx-rLC" id="flt-grp-act"/>
+                                                                    </connections>
+                                                                </menuItem>
+                                                                <menuItem isSeparatorItem="YES" id="flt-sep-003"/>
+                                                                <menuItem title="List Chats With Filter..." id="flt-lst-001" userLabel="List Chats With Filter">
+                                                                    <modifierMask key="keyEquivalentModifierMask"/>
+                                                                    <connections>
+                                                                        <action selector="debugListChatsWithFilter:" target="Voe-Tx-rLC" id="flt-lst-act"/>
+                                                                    </connections>
+                                                                </menuItem>
+                                                            </items>
+                                                        </menu>
+                                                    </menuItem>
+                                                    <menuItem isSeparatorItem="YES" id="scr-sep-001"/>
+                                                    <menuItem title="Scroll Chats Down" id="scr-cht-dn1" userLabel="Scroll Chats Down">
+                                                        <modifierMask key="keyEquivalentModifierMask"/>
+                                                        <connections>
+                                                            <action selector="debugScrollChatsDown:" target="Voe-Tx-rLC" id="scr-cht-dn-act"/>
+                                                        </connections>
+                                                    </menuItem>
+                                                    <menuItem title="Scroll Chats Up" id="scr-cht-up1" userLabel="Scroll Chats Up">
+                                                        <modifierMask key="keyEquivalentModifierMask"/>
+                                                        <connections>
+                                                            <action selector="debugScrollChatsUp:" target="Voe-Tx-rLC" id="scr-cht-up-act"/>
                                                         </connections>
                                                     </menuItem>
                                                 </items>
                                             </menu>
-                                        </menuItem>
-                                        <menuItem isSeparatorItem="YES" id="scr-sep-001"/>
-                                        <menuItem title="Scroll Chats Down" id="scr-cht-dn1" userLabel="Scroll Chats Down">
-                                            <modifierMask key="keyEquivalentModifierMask"/>
-                                            <connections>
-                                                <action selector="debugScrollChatsDown:" target="Voe-Tx-rLC" id="scr-cht-dn-act"/>
-                                            </connections>
-                                        </menuItem>
-                                        <menuItem title="Scroll Chats Up" id="scr-cht-up1" userLabel="Scroll Chats Up">
-                                            <modifierMask key="keyEquivalentModifierMask"/>
-                                            <connections>
-                                                <action selector="debugScrollChatsUp:" target="Voe-Tx-rLC" id="scr-cht-up-act"/>
-                                            </connections>
                                         </menuItem>
                                         <menuItem isSeparatorItem="YES" id="dbg-cfg-sep"/>
                                         <menuItem title="Debug Configuration..." keyEquivalent="d" id="dbg-cfg-001" userLabel="Debug Configuration">
