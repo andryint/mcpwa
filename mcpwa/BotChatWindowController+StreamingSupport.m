@@ -8,6 +8,7 @@
 #import "BotChatWindowController+StreamingSupport.h"
 #import "BotChatWindowController+ThemeHandling.h"
 #import "BotChatWindowController+ScrollManagement.h"
+#import "BotChatWindowController+MarkdownParser.h"
 
 @implementation BotChatWindowController (StreamingSupport)
 

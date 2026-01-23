@@ -6,6 +6,7 @@
 //
 
 #import "BotChatWindowController+ThemeHandling.h"
+#import "BotChatWindowController+MessageRendering.h"
 
 // Claude-style light mode colors
 // User bubble: warm beige/tan (Claude style)
@@ -127,9 +128,6 @@ NSColor *secondaryTextColor(void) {
     self.sendButton.layer.backgroundColor = accentColor.CGColor;
     self.stopButton.layer.backgroundColor = accentColor.CGColor;
 
-    // Update mode indicator
-    [self updateModeIndicator];
-
     // Rebuild all chat messages to update bubble colors
     [self rebuildChatMessages];
 
@@ -147,36 +145,6 @@ NSColor *secondaryTextColor(void) {
     // Re-add all messages with updated colors
     for (ChatDisplayMessage *message in self.messages) {
         [self addMessageBubble:message];
-    }
-}
-
-- (void)updateModeIndicator {
-    if (self.currentChatMode == WAChatModeRAG) {
-        self.modeIndicator.stringValue = @"RAG";
-        // Blue color for RAG mode
-        if (isDarkMode()) {
-            self.modeIndicator.backgroundColor = [NSColor colorWithRed:0.2 green:0.4 blue:0.7 alpha:1.0];
-            self.modeIndicator.textColor = [NSColor whiteColor];
-        } else {
-            self.modeIndicator.backgroundColor = [NSColor colorWithRed:0.85 green:0.9 blue:1.0 alpha:1.0];
-            self.modeIndicator.textColor = [NSColor colorWithRed:0.2 green:0.4 blue:0.7 alpha:1.0];
-        }
-        // Show RAG model selector, hide MCP model selector
-        self.modelSelector.hidden = YES;
-        self.ragModelSelector.hidden = NO;
-    } else {
-        self.modeIndicator.stringValue = @"MCP";
-        // Green color for MCP mode
-        if (isDarkMode()) {
-            self.modeIndicator.backgroundColor = [NSColor colorWithRed:0.2 green:0.5 blue:0.3 alpha:1.0];
-            self.modeIndicator.textColor = [NSColor whiteColor];
-        } else {
-            self.modeIndicator.backgroundColor = [NSColor colorWithRed:0.85 green:0.95 blue:0.88 alpha:1.0];
-            self.modeIndicator.textColor = [NSColor colorWithRed:0.2 green:0.5 blue:0.3 alpha:1.0];
-        }
-        // Show MCP model selector, hide RAG model selector
-        self.modelSelector.hidden = NO;
-        self.ragModelSelector.hidden = YES;
     }
 }
 

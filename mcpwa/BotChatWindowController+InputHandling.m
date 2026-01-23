@@ -30,32 +30,20 @@
     [self addUserMessage:text];
     [self setProcessing:YES];
 
-    // Route to appropriate backend based on current mode
-    if (self.currentChatMode == WAChatModeRAG) {
-        [self updateStatus:@"Querying knowledge base..."];
-        [self.streamingResponse setString:@""];
-        [self createStreamingBubble];  // Create empty bubble for streaming
-        // Use selected model for RAG query
-        [self.ragClient queryStream:text k:0 chatFilter:0 model:self.selectedRAGModelId systemPrompt:nil];
-    } else {
-        [self updateStatus:@"Thinking..."];
-        [self.geminiClient sendMessage:text];
-    }
+    // Send to backend
+    [self updateStatus:@"Querying backend..."];
+    [self.streamingResponse setString:@""];
+    [self createStreamingBubble];  // Create empty bubble for streaming
+    // Use selected model for query
+    [self.ragClient queryStream:text k:0 chatFilter:0 model:self.selectedRAGModelId systemPrompt:nil];
 }
 
 - (void)stopProcessing:(id)sender {
     // Set cancellation flag first
     self.isCancelled = YES;
 
-    // Cancel the current request based on mode
-    if (self.currentChatMode == WAChatModeRAG) {
-        [self.ragClient cancelRequest];
-    } else {
-        // Cancel the current Gemini request
-        [self.geminiClient cancelRequest];
-        // Clear conversation history to prevent stale function call chains
-        [self.geminiClient clearHistory];
-    }
+    // Cancel the current request
+    [self.ragClient cancelRequest];
 
     // Reset processing state
     [self setProcessing:NO];

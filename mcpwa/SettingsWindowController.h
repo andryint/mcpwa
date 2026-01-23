@@ -12,12 +12,6 @@ typedef NS_ENUM(NSInteger, WAThemeMode) {
     WAThemeModeAuto = 2
 };
 
-/// Chat mode options
-typedef NS_ENUM(NSInteger, WAChatMode) {
-    WAChatModeMCP = 0,  // MCP mode (Gemini + WhatsApp tools)
-    WAChatModeRAG = 1   // RAG mode (external RAG service)
-};
-
 /// RAG environment options
 typedef NS_ENUM(NSInteger, WARAGEnvironment) {
     WARAGEnvironmentProduction = 0,  // Production: localhost:8000
@@ -26,9 +20,6 @@ typedef NS_ENUM(NSInteger, WARAGEnvironment) {
 
 /// NSUserDefaults key for theme setting
 extern NSString *const WAThemeModeKey;
-
-/// NSUserDefaults key for chat mode setting
-extern NSString *const WAChatModeKey;
 
 /// NSUserDefaults key for RAG service URL
 extern NSString *const WARAGServiceURLKey;
@@ -39,9 +30,6 @@ extern NSString *const WARAGEnvironmentKey;
 /// Notification posted when theme changes
 extern NSString *const WAThemeDidChangeNotification;
 
-/// Notification posted when chat mode changes
-extern NSString *const WAChatModeDidChangeNotification;
-
 @interface SettingsWindowController : NSWindowController
 
 + (instancetype)sharedController;
@@ -51,9 +39,6 @@ extern NSString *const WAChatModeDidChangeNotification;
 
 /// Current theme mode preference
 @property (class, readonly) WAThemeMode currentThemeMode;
-
-/// Current chat mode preference
-@property (class, readonly) WAChatMode currentChatMode;
 
 /// Current RAG service URL
 @property (class, readonly) NSString *ragServiceURL;
@@ -66,9 +51,6 @@ extern NSString *const WAChatModeDidChangeNotification;
 
 /// Apply theme to all windows
 + (void)applyThemeToAllWindows;
-
-/// Set chat mode programmatically
-+ (void)setChatMode:(WAChatMode)mode;
 
 /// Set RAG service URL programmatically
 + (void)setRAGServiceURL:(NSString *)url;

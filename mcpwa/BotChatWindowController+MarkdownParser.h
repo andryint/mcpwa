@@ -11,7 +11,8 @@ NS_ASSUME_NONNULL_BEGIN
 
 @interface BotChatWindowController (MarkdownParser)
 
-// attributedStringFromMarkdown:textColor: is declared in main header
+/// Create attributed string from markdown text
+- (NSAttributedString *)attributedStringFromMarkdown:(NSString *)markdown textColor:(NSColor *)textColor;
 
 @end
 

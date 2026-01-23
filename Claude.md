@@ -1,26 +1,23 @@
-# MCPWA - WhatsApp MCP Connector
+# MCPWA - WhatsApp Assistant
 
 ## Project Overview
 
-MCPWA is a macOS Cocoa application that serves as a WhatsApp Assistant with two main operating modes:
-- **MCP Mode**: Gemini-powered chat with WhatsApp integration via Accessibility API
-- **RAG Mode**: Query external RAG (Retrieval-Augmented Generation) service
+MCPWA is a macOS Cocoa application that serves as a WhatsApp Assistant. The app connects to a backend service that provides LLM-powered chat capabilities and can interact with WhatsApp via the Accessibility API through the MCP protocol.
 
-The app provides an MCP (Model Context Protocol) bridge between LLM (Gemini or Claude) and WhatsApp.
+The architecture is:
+- **Frontend (this app)**: macOS native UI for chat interaction
+- **Backend service**: Handles LLM queries, RAG, and MCP tool execution
+- **WhatsApp integration**: Via Accessibility API, accessible through the backend's MCP tools
 
 ## Project Structure
 
 ```
 mcpwa/
 ├── mcpwa/                    # Main Cocoa App
-│   ├── AppDelegate.m/h       # App entry point, MCP server lifecycle
+│   ├── AppDelegate.m/h       # App entry point
 │   ├── BotChatWindowController.m/h  # Main chat UI & message handling
-│   ├── GeminiClient.m/h      # Gemini API client
-│   ├── RAGClient.m/h         # RAG API client (NEW)
-│   ├── MCPServer.m/h         # MCP protocol server
-│   ├── MCPSocketTransport.m/h # Socket transport for MCP
-│   ├── MCPStdioTransport.m/h # Stdio transport for MCP
-│   ├── SettingsWindowController.m/h # User preferences (theme, mode, RAG URL)
+│   ├── RAGClient.m/h         # Backend API client
+│   ├── SettingsWindowController.m/h # User preferences (theme, backend URL)
 │   ├── DebugConfigWindowController.m/h # Debug configuration
 │   ├── WAAccessibility.m/h   # WhatsApp UI automation via Accessibility API
 │   ├── WAAccessibilityExplorer.m/h # Accessibility tree explorer
@@ -31,56 +28,37 @@ mcpwa/
 
 ## Architecture
 
-### Chat Modes
+### Backend Connection
 
-The app supports two chat modes, selectable in Settings:
-
-1. **MCP Mode (WAChatModeMCP)**
-   - Uses GeminiClient to communicate with Gemini API
-   - Provides WhatsApp MCP tools for automation
-   - Model selector visible in UI
-   - Green "MCP" badge indicator
-
-2. **RAG Mode (WAChatModeRAG)**
-   - Uses RAGClient to query external RAG service
-   - No WhatsApp tools available
-   - Model selector hidden (RAG service handles model)
-   - Blue "RAG" badge indicator
+The app always connects to a backend service (configurable in Settings). The backend provides:
+- LLM-powered chat responses
+- Model selection (fetched from `/models` endpoint)
+- Streaming responses via SSE
+- MCP tools execution for WhatsApp integration
 
 ### Key Classes
 
 #### BotChatWindowController
 Main chat window controller. Handles:
 - Message input/display
-- Mode switching (listens to `WAChatModeDidChangeNotification`)
-- Routes messages to GeminiClient or RAGClient based on mode
-- Displays mode indicator badge
+- Routes messages to backend via RAGClient
+- Model selector dropdown (models fetched from backend)
+- Streaming response display
 - Zoom support (Cmd+/Cmd-)
 
-Protocols: `GeminiClientDelegate`, `RAGClientDelegate`, `NSTextFieldDelegate`
-
-#### GeminiClient
-Gemini API wrapper:
-- API endpoint: `https://generativelanguage.googleapis.com/v1beta/models/{MODEL_ID}:generateContent`
-- Manages conversation history
-- Supports function calling (MCP tools)
-- Auto tool loop execution
-- API key loaded from: env var > NSUserDefaults > config.json
-
-Supported models:
-- Gemini 3.0 Flash/Pro (preview)
-- Gemini 2.5 Flash/Pro (preview)
-- Gemini 2.0 Flash
+Protocols: `RAGClientDelegate`, `NSTextFieldDelegate`
 
 #### RAGClient
-RAG service API client:
+Backend API client:
 - Base URL configurable in Settings (default: `http://localhost:8000`)
 - Endpoints:
   - `GET /health` - Health check
-  - `POST /query` - RAG query (returns answer + sources)
-  - `POST /query/stream` - Streaming RAG query (SSE)
+  - `GET /models` - List available models
+  - `POST /query` - Query (returns answer + sources)
+  - `POST /query/stream` - Streaming query (SSE)
   - `POST /search` - Semantic search without LLM
   - `GET /chats` - List all chats
+  - `POST /generate-title` - Generate chat title from message
 - Request body uses `query` field (FastAPI convention)
 - Handles HTTP errors with detailed parsing (FastAPI validation errors)
 - SSE streaming support with proper event parsing
@@ -88,27 +66,20 @@ RAG service API client:
 #### SettingsWindowController
 User preferences:
 - Theme: Light/Dark/Auto
-- Chat Mode: MCP/RAG
-- RAG URL: Configurable endpoint with "Test" button
+- Environment: Production (:8000) / Development (:8001)
+- Backend URL: Configurable endpoint with "Test" button
 - Posts notifications on changes
 
 Keys:
 - `WAThemeModeKey` - Theme preference
-- `WAChatModeKey` - Chat mode preference
-- `WARAGServiceURLKey` - RAG service URL
+- `WARAGServiceURLKey` - Backend service URL
+- `WARAGEnvironmentKey` - Environment (Production/Development)
 
 Notifications:
 - `WAThemeDidChangeNotification`
-- `WAChatModeDidChangeNotification`
 
-#### MCPServer
-MCP protocol implementation for Claude Desktop integration:
-- Supports stdio and socket transports
-- Exposes WhatsApp tools to external LLM clients
-
-### MCP Tools (WhatsApp)
-
-Available in MCP mode:
+#### WAAccessibility
+WhatsApp UI automation via Accessibility API. The backend calls these tools via MCP protocol:
 - `whatsapp_start_session` / `whatsapp_stop_session` - Session management
 - `whatsapp_status` - Check WhatsApp status
 - `whatsapp_list_chats` - List chats (filters: all/unread/favorites/groups)
@@ -117,29 +88,23 @@ Available in MCP mode:
 - `whatsapp_get_messages` - Get messages from chat
 - `whatsapp_send_message` - Send message to chat
 - `whatsapp_search` - Search in WhatsApp
-- `run_shell_command` - Execute local shell command
 
 ## Configuration
 
-### API Key Storage (Priority Order)
-1. Environment variable: `GEMINI_API_KEY`
-2. NSUserDefaults: `GeminiAPIKey`
-3. Config file: `~/Library/Application Support/mcpwa/config.json`
-   ```json
-   {
-     "geminiApiKey": "your-key",
-     "ragServiceURL": "http://localhost:8000"
-   }
-   ```
+### Backend URL
+Configurable in Settings:
+- Production: `http://localhost:8000`
+- Development: `http://localhost:8001`
+- Or custom URL
 
 ### User Defaults Keys
 - `WAThemeMode` - Theme preference (0=Light, 1=Dark, 2=Auto)
-- `WAChatMode` - Chat mode (0=MCP, 1=RAG)
-- `RAGServiceURL` - RAG service URL
-- `GeminiSelectedModel` - Selected Gemini model
+- `RAGServiceURL` - Backend service URL
+- `RAGEnvironment` - Environment (0=Production, 1=Development)
+- `RAGSelectedModel` - Selected model ID
 - `ChatFontSize` - Chat font size
 
-## RAG API Integration
+## Backend API Integration
 
 ### Request Format
 ```json
@@ -147,7 +112,8 @@ POST /query or /query/stream
 Content-Type: application/json
 
 {
-  "query": "your question here"
+  "query": "your question here",
+  "model": "model-id"
 }
 ```
 
@@ -156,8 +122,8 @@ Content-Type: application/json
 {
   "answer": "The response text...",
   "sources": [
-    {"title": "Source 1", "url": "http://..."},
-    {"title": "Source 2", "filename": "doc.pdf"}
+    {"chat_name": "Chat 1", "time_start": "2025-12-24T17:18:00"},
+    {"chat_name": "Chat 2", "time_start": "2025-12-20T10:30:00"}
   ]
 }
 ```
@@ -168,6 +134,19 @@ data: {"type": "chunk", "content": "partial text..."}
 data: {"type": "sources", "sources": [...]}
 data: {"type": "done"}
 data: {"type": "error", "message": "error description"}
+```
+
+### Models Endpoint
+```json
+GET /models
+
+Response:
+{
+  "models": [
+    {"id": "gemini-3-pro", "name": "Gemini 3 Pro", "provider": "gemini"},
+    {"id": "claude-3-opus", "name": "Claude 3 Opus", "provider": "anthropic"}
+  ]
+}
 ```
 
 ### Error Handling
@@ -181,17 +160,12 @@ data: {"type": "error", "message": "error description"}
 - Title bar with window title (auto-generated from first message)
 - Chat scroll view with message bubbles
 - Input area with text view, send/stop buttons
-- Bottom bar: status label, mode indicator badge, model selector
+- Bottom bar: status label, model selector
 
-### Mode Indicator Badge
-- Green "MCP" badge in MCP mode
-- Blue "RAG" badge in RAG mode
-- Model selector hidden in RAG mode
-
-### Settings Window (400x280)
+### Settings Window (400x240)
 - Appearance section: Theme selector
-- Chat Mode section: Mode selector (MCP/RAG)
-- RAG Settings (visible only in RAG mode):
+- Backend Connection section:
+  - Environment selector (Production/Development)
   - URL text field
   - Test connection button
   - Connection status label
@@ -210,7 +184,6 @@ open /path/to/build/Debug/mcpwa.app
 
 The app uses `NSNotificationCenter` for internal communication:
 - `WAThemeDidChangeNotification` - Theme changed
-- `WAChatModeDidChangeNotification` - Chat mode changed (userInfo: `@{@"mode": @(WAChatMode)}`)
 
 ## Accessibility Permissions
 

@@ -1,10 +1,8 @@
 #import <Cocoa/Cocoa.h>
-#import "MCPServer.h"
-#import "MCPTransport.h"
 
 @class BotChatWindowController;
 
-@interface AppDelegate : NSObject <NSApplicationDelegate, MCPServerDelegate>
+@interface AppDelegate : NSObject <NSApplicationDelegate>
 
 @property (nonatomic, strong, readonly) BotChatWindowController *botChatController;
 

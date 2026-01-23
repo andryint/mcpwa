@@ -2,7 +2,7 @@
 //  BotChatWindowController.m
 //  mcpwa
 //
-//  Bot Chat Window - Gemini-powered chat with WhatsApp MCP integration
+//  Bot Chat Window - Backend-powered chat with WhatsApp integration
 //
 
 #import "BotChatWindowController.h"
@@ -12,9 +12,7 @@
 #import "BotChatWindowController+ScrollManagement.h"
 #import "BotChatWindowController+StreamingSupport.h"
 #import "BotChatWindowController+MessageRendering.h"
-#import "BotChatWindowController+MCPToolExecution.h"
 #import "BotChatWindowController+InputHandling.h"
-#import "BotChatWindowController+ModeManagement.h"
 #import "BotChatWindowController+DelegateHandlers.h"
 #import "WAAccessibility.h"
 #import "DebugConfigWindowController.h"
@@ -28,7 +26,8 @@
 
 #pragma mark - BotChatWindowController
 
-@interface BotChatWindowController () <NSPopoverDelegate, NSTextViewDelegate>
+@interface BotChatWindowController () <NSPopoverDelegate>
+// Note: NSTextViewDelegate is declared in BotChatWindowController+InputHandling.h
 @end
 
 @implementation BotChatWindowController
@@ -52,24 +51,13 @@
         CGFloat savedFontSize = [[NSUserDefaults standardUserDefaults] floatForKey:@"ChatFontSize"];
         _currentFontSize = (savedFontSize >= kMinFontSize && savedFontSize <= kMaxFontSize) ? savedFontSize : kDefaultFontSize;
 
-        // Load current chat mode
-        _currentChatMode = [SettingsWindowController currentChatMode];
-
         [self setupWindow];
-        [self setupGeminiClient];
         [self setupRAGClient];
-        [self loadMCPTools];
 
         // Listen to theme change notification from Settings
         [[NSNotificationCenter defaultCenter] addObserver:self
                                                  selector:@selector(themeDidChange:)
                                                      name:WAThemeDidChangeNotification
-                                                   object:nil];
-
-        // Listen to chat mode change notification from Settings
-        [[NSNotificationCenter defaultCenter] addObserver:self
-                                                 selector:@selector(chatModeDidChange:)
-                                                     name:WAChatModeDidChangeNotification
                                                    object:nil];
 
         // Listen to window resize to keep scroll at bottom
@@ -125,10 +113,11 @@
     [self applyFontSize];
 }
 
-- (BOOL)validateMenuItem:(NSMenuItem *)menuItem {
-    if (menuItem.action == @selector(zoomIn:)) {
+- (BOOL)validateUserInterfaceItem:(id<NSValidatedUserInterfaceItem>)item {
+    SEL action = item.action;
+    if (action == @selector(zoomIn:)) {
         return self.currentFontSize < kMaxFontSize;
-    } else if (menuItem.action == @selector(zoomOut:)) {
+    } else if (action == @selector(zoomOut:)) {
         return self.currentFontSize > kMinFontSize;
     }
     return YES;
@@ -342,20 +331,7 @@
     self.stopButton.contentTintColor = [NSColor whiteColor];
     [inputContainer addSubview:self.stopButton];
 
-    // Mode indicator label (shows MCP or RAG)
-    self.modeIndicator = [[NSTextField alloc] initWithFrame:NSZeroRect];
-    self.modeIndicator.translatesAutoresizingMaskIntoConstraints = NO;
-    self.modeIndicator.bezeled = NO;
-    self.modeIndicator.editable = NO;
-    self.modeIndicator.selectable = NO;
-    self.modeIndicator.drawsBackground = YES;
-    self.modeIndicator.wantsLayer = YES;
-    self.modeIndicator.layer.cornerRadius = 4;
-    self.modeIndicator.font = [NSFont boldSystemFontOfSize:9];
-    self.modeIndicator.alignment = NSTextAlignmentCenter;
-    [inputContainer addSubview:self.modeIndicator];
-
-    // Model selector dropdown (MCP mode)
+    // Model selector dropdown
     self.modelSelector = [[NSPopUpButton alloc] initWithFrame:NSZeroRect pullsDown:NO];
     self.modelSelector.translatesAutoresizingMaskIntoConstraints = NO;
     self.modelSelector.target = self;
@@ -365,24 +341,10 @@
     self.modelSelector.bordered = NO;
     self.modelSelector.contentTintColor = secondaryTextColor();
     [[self.modelSelector cell] setArrowPosition:NSPopUpArrowAtBottom];
-    [self populateModelSelector];
     [inputContainer addSubview:self.modelSelector];
 
-    // RAG model selector dropdown (RAG mode)
-    self.ragModelSelector = [[NSPopUpButton alloc] initWithFrame:NSZeroRect pullsDown:NO];
-    self.ragModelSelector.translatesAutoresizingMaskIntoConstraints = NO;
-    self.ragModelSelector.target = self;
-    self.ragModelSelector.action = @selector(ragModelChanged:);
-    self.ragModelSelector.font = [NSFont systemFontOfSize:11];
-    self.ragModelSelector.controlSize = NSControlSizeSmall;
-    self.ragModelSelector.bordered = NO;
-    self.ragModelSelector.contentTintColor = secondaryTextColor();
-    [[self.ragModelSelector cell] setArrowPosition:NSPopUpArrowAtBottom];
-    [inputContainer addSubview:self.ragModelSelector];
-
-    // Update mode indicator AFTER both selectors are created
-    // This sets the correct visibility based on current mode
-    [self updateModeIndicator];
+    // Populate model selector
+    [self populateModelSelector];
 
     // Loading indicator
     self.loadingIndicator = [[NSProgressIndicator alloc] initWithFrame:NSZeroRect];
@@ -474,30 +436,18 @@
         [self.stopButton.centerYAnchor constraintEqualToAnchor:self.sendButton.centerYAnchor]
     ]];
 
-    // Bottom row: status on left, mode indicator and model selectors on right
-    // Both model selectors share the same position - they toggle visibility
+    // Bottom row: status on left, model selector on right
     [NSLayoutConstraint activateConstraints:@[
-        // MCP model selector (right side)
+        // Model selector (right side)
         [self.modelSelector.trailingAnchor constraintEqualToAnchor:inputContainer.trailingAnchor constant:-10],
         [self.modelSelector.centerYAnchor constraintEqualToAnchor:self.statusLabel.centerYAnchor],
-
-        // RAG model selector (same position as MCP model selector)
-        [self.ragModelSelector.trailingAnchor constraintEqualToAnchor:inputContainer.trailingAnchor constant:-10],
-        [self.ragModelSelector.centerYAnchor constraintEqualToAnchor:self.statusLabel.centerYAnchor],
 
         // Status label
         [self.statusLabel.leadingAnchor constraintEqualToAnchor:inputContainer.leadingAnchor constant:20],
         [self.statusLabel.topAnchor constraintEqualToAnchor:self.inputScrollView.bottomAnchor constant:4],
         [self.statusLabel.bottomAnchor constraintEqualToAnchor:inputContainer.bottomAnchor constant:-10],
 
-        // Mode indicator - position it to the left of both selectors using a fixed offset from right edge
-        // This avoids depending on hidden/shown selector widths
-        [self.modeIndicator.trailingAnchor constraintEqualToAnchor:inputContainer.trailingAnchor constant:-130],
-        [self.modeIndicator.centerYAnchor constraintEqualToAnchor:self.statusLabel.centerYAnchor],
-        [self.modeIndicator.widthAnchor constraintEqualToConstant:36],
-        [self.modeIndicator.heightAnchor constraintEqualToConstant:18],
-
-        [self.statusLabel.trailingAnchor constraintLessThanOrEqualToAnchor:self.modeIndicator.leadingAnchor constant:-10]
+        [self.statusLabel.trailingAnchor constraintLessThanOrEqualToAnchor:self.modelSelector.leadingAnchor constant:-10]
     ]];
 
     // Document view constraints
@@ -521,11 +471,196 @@
     [NSLayoutConstraint activateConstraints:@[
         [documentView.heightAnchor constraintGreaterThanOrEqualToAnchor:self.chatScrollView.heightAnchor]
     ]];
+}
 
-    // Add welcome message
-    [self addSystemMessage:@"I'm your WhatsApp Assistant powered by Gemini.\n"
-                           "I can search your chats, read messages, and send replies.\n"
-                           "Just ask me anything!"];
+#pragma mark - Client Setup
+
+- (void)setupRAGClient {
+    NSString *ragURL = [SettingsWindowController ragServiceURL];
+    self.ragClient = [[RAGClient alloc] initWithBaseURL:ragURL];
+    self.ragClient.delegate = self;
+
+    // Fetch available models from the server
+    [self populateModelSelector];
+    [self updateStatus:@"Ready"];
+}
+
+- (void)populateModelSelector {
+    [WALogger info:@"[RAG UI] populateModelSelector called"];
+    [self.modelSelector removeAllItems];
+
+    // Add placeholder while loading
+    [self.modelSelector addItemWithTitle:@"Loading models..."];
+    self.modelSelector.enabled = NO;
+
+    // Fetch models from server
+    [self.ragClient listModelsWithCompletion:^(NSArray<RAGModelItem *> *models, NSString *error) {
+        [WALogger info:@"[RAG UI] listModelsWithCompletion returned - models: %lu, error: %@",
+            (unsigned long)models.count, error];
+        dispatch_async(dispatch_get_main_queue(), ^{
+            [self.modelSelector removeAllItems];
+
+            if (error) {
+                [WALogger error:@"[RAG] Failed to fetch models: %@", error];
+                [self.modelSelector addItemWithTitle:@"Error loading models"];
+                // Show connection error message
+                [self addErrorMessage:@"Could not connect to backend. Check your connection."];
+                return;
+            }
+
+            if (models.count == 0) {
+                [self.modelSelector addItemWithTitle:@"No models available"];
+                [self addErrorMessage:@"No models available. Check your connection."];
+                return;
+            }
+
+            self.ragModels = models;
+            self.modelSelector.enabled = YES;
+
+            // Group models by provider for better organization
+            NSMutableDictionary<NSString *, NSMutableArray<RAGModelItem *> *> *byProvider = [NSMutableDictionary dictionary];
+            for (RAGModelItem *model in models) {
+                NSString *provider = model.provider ?: @"other";
+                if (!byProvider[provider]) {
+                    byProvider[provider] = [NSMutableArray array];
+                }
+                [byProvider[provider] addObject:model];
+            }
+
+            // Add models to selector, grouped by provider
+            NSArray *providerOrder = @[@"gemini", @"anthropic", @"openai", @"other"];
+            NSString *defaultModelId = @"gemini-3-pro";
+
+            for (NSString *provider in providerOrder) {
+                NSArray<RAGModelItem *> *providerModels = byProvider[provider];
+                if (!providerModels || providerModels.count == 0) continue;
+
+                // Add separator with provider name if we have multiple providers
+                if (byProvider.count > 1 && self.modelSelector.numberOfItems > 0) {
+                    [self.modelSelector.menu addItem:[NSMenuItem separatorItem]];
+                }
+
+                for (RAGModelItem *model in providerModels) {
+                    // Add provider emoji prefix
+                    NSString *prefix = @"";
+                    if ([model.provider isEqualToString:@"gemini"]) {
+                        prefix = @"\u2728 ";  // sparkles for Gemini
+                    } else if ([model.provider isEqualToString:@"anthropic"]) {
+                        prefix = @"\U0001F9E0 ";  // brain for Anthropic
+                    } else if ([model.provider isEqualToString:@"openai"]) {
+                        prefix = @"\U0001F916 ";  // robot for OpenAI
+                    }
+
+                    NSString *displayName = [NSString stringWithFormat:@"%@%@", prefix, model.name];
+                    [self.modelSelector addItemWithTitle:displayName];
+                    self.modelSelector.lastItem.representedObject = model.modelId;
+                }
+            }
+
+            // Select saved model or default
+            NSString *savedModelId = [[NSUserDefaults standardUserDefaults] stringForKey:@"RAGSelectedModel"];
+            NSString *modelToSelect = savedModelId.length > 0 ? savedModelId : defaultModelId;
+
+            // Find and select the model
+            BOOL selected = NO;
+            NSString *selectedModelDisplayName = nil;
+            for (NSMenuItem *item in self.modelSelector.itemArray) {
+                if ([item.representedObject isEqualToString:modelToSelect]) {
+                    [self.modelSelector selectItem:item];
+                    self.selectedRAGModelId = modelToSelect;
+                    selectedModelDisplayName = item.title;
+                    selected = YES;
+                    break;
+                }
+            }
+
+            // If not found, select first non-separator item
+            if (!selected && self.modelSelector.numberOfItems > 0) {
+                for (NSMenuItem *item in self.modelSelector.itemArray) {
+                    if (!item.isSeparatorItem && item.representedObject) {
+                        [self.modelSelector selectItem:item];
+                        self.selectedRAGModelId = item.representedObject;
+                        selectedModelDisplayName = item.title;
+                        break;
+                    }
+                }
+            }
+
+            // Show welcome message with current model
+            NSString *welcomeMessage = [NSString stringWithFormat:
+                @"I'm your WhatsApp Assistant powered by %@.\n"
+                "I can search your chats, read messages, and answer questions.\n"
+                "Just ask me anything!",
+                selectedModelDisplayName ?: @"AI"];
+            [self addSystemMessage:welcomeMessage];
+        });
+    }];
+}
+
+- (void)modelChanged:(NSPopUpButton *)sender {
+    NSString *selectedModelId = sender.selectedItem.representedObject;
+    if (selectedModelId) {
+        self.selectedRAGModelId = selectedModelId;
+        [[NSUserDefaults standardUserDefaults] setObject:selectedModelId forKey:@"RAGSelectedModel"];
+
+        NSString *displayName = sender.selectedItem.title;
+        [self updateStatus:@"Ready"];
+
+        // Add system message about model change
+        [self addSystemMessage:[NSString stringWithFormat:@"Switched to %@", displayName]];
+    }
+}
+
+#pragma mark - Title Generation
+
+- (void)generateTitleIfNeeded {
+    if (self.hasTitleBeenGenerated || !self.firstUserMessage) {
+        return;
+    }
+    self.hasTitleBeenGenerated = YES;
+
+    // Request title generation from backend
+    NSString *ragURL = [SettingsWindowController ragServiceURL];
+    NSString *urlString = [NSString stringWithFormat:@"%@/generate-title", ragURL];
+    NSURL *url = [NSURL URLWithString:urlString];
+
+    if (!url) return;
+
+    NSMutableURLRequest *request = [NSMutableURLRequest requestWithURL:url];
+    request.HTTPMethod = @"POST";
+    [request setValue:@"application/json" forHTTPHeaderField:@"Content-Type"];
+
+    NSDictionary *body = @{
+        @"message": self.firstUserMessage
+    };
+
+    NSError *jsonError;
+    request.HTTPBody = [NSJSONSerialization dataWithJSONObject:body options:0 error:&jsonError];
+    if (jsonError) return;
+
+    NSURLSession *session = [NSURLSession sharedSession];
+    NSURLSessionDataTask *task = [session dataTaskWithRequest:request completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {
+        if (error || !data) return;
+
+        NSDictionary *json = [NSJSONSerialization JSONObjectWithData:data options:0 error:nil];
+        NSString *title = json[@"title"];
+
+        if (title.length > 0) {
+            // Clean up the title - remove quotes and trim
+            title = [title stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+            title = [title stringByTrimmingCharactersInSet:[NSCharacterSet characterSetWithCharactersInString:@"\"'"]];
+
+            // Limit title length
+            if (title.length > 40) {
+                title = [[title substringToIndex:37] stringByAppendingString:@"..."];
+            }
+
+            dispatch_async(dispatch_get_main_queue(), ^{
+                self.titleLabel.stringValue = title;
+            });
+        }
+    }];
+    [task resume];
 }
 
 #pragma mark - Window Control

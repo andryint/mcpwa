@@ -7,6 +7,7 @@
 
 #import "BotChatWindowController+ZoomActions.h"
 #import "BotChatWindowController+ThemeHandling.h"
+#import "BotChatWindowController+InputHandling.h"
 
 // Font size constants
 const CGFloat kDefaultFontSize = 14.0;

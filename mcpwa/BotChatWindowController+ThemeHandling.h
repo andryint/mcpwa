@@ -30,9 +30,6 @@ void setColorReferenceWindow(NSWindow * _Nullable window);
 /// Rebuild chat messages with updated colors
 - (void)rebuildChatMessages;
 
-/// Update the mode indicator (MCP/RAG badge)
-- (void)updateModeIndicator;
-
 @end
 
 NS_ASSUME_NONNULL_END

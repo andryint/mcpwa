@@ -2,122 +2,15 @@
 //  BotChatWindowController+DelegateHandlers.m
 //  mcpwa
 //
-//  Delegate handlers for GeminiClient and RAGClient
+//  Delegate handlers for RAGClient
 //
 
 #import "BotChatWindowController+DelegateHandlers.h"
 #import "BotChatWindowController+MessageRendering.h"
 #import "BotChatWindowController+StreamingSupport.h"
-#import "BotChatWindowController+MCPToolExecution.h"
-#import "BotChatWindowController+ModeManagement.h"
 #import "DebugConfigWindowController.h"
 
 @implementation BotChatWindowController (DelegateHandlers)
-
-#pragma mark - GeminiClientDelegate
-
-- (void)geminiClient:(GeminiClient *)client didCompleteSendWithResponse:(GeminiChatResponse *)response {
-    NSLog(@"[Gemini] didCompleteSendWithResponse - error: %@, text: %@, functionCalls: %lu",
-          response.error ?: @"none",
-          response.text ? @"yes" : @"no",
-          (unsigned long)response.functionCalls.count);
-
-    if (response.error) {
-        [self addErrorMessage:response.error];
-        [self setProcessing:NO];
-        [self updateStatus:@"Error"];
-        return;
-    }
-
-    // When toolExecutor is set, GeminiClient handles the tool loop internally.
-    // This delegate is called for intermediate responses during the loop.
-    if (client.toolExecutor) {
-        // Show intermediate text alongside function calls if present
-        if (response.text) {
-            [self addBotMessage:response.text];
-        }
-        // Function calls are handled by the toolExecutor, no action needed here
-        return;
-    }
-
-    // Legacy path: when toolExecutor is not set, handle function calls here
-    if (response.hasFunctionCalls) {
-        NSLog(@"[Gemini] Processing %lu function calls (legacy path)", (unsigned long)response.functionCalls.count);
-        if (response.text) {
-            [self addBotMessage:response.text];
-        }
-        [self handleFunctionCalls:response.functionCalls];
-        return;
-    }
-
-    // No function calls - show text response and finish
-    if (response.text) {
-        [self addBotMessage:response.text];
-    }
-    [self setProcessing:NO];
-    [self updateStatus:@"Ready"];
-    [self generateTitleIfNeeded];
-}
-
-- (void)geminiClient:(GeminiClient *)client didCompleteToolLoopWithResponse:(GeminiChatResponse *)response {
-    NSLog(@"[Gemini] didCompleteToolLoopWithResponse - error: %@, text: %@",
-          response.error ?: @"none",
-          response.text ? @"yes" : @"no");
-
-    if (response.error) {
-        [self addErrorMessage:response.error];
-        [self setProcessing:NO];
-        [self updateStatus:@"Error"];
-        return;
-    }
-
-    // Tool loop completed - show final text response
-    if (response.text) {
-        [self addBotMessage:response.text];
-    }
-    [self setProcessing:NO];
-    [self updateStatus:@"Ready"];
-    [self generateTitleIfNeeded];
-}
-
-- (void)geminiClient:(GeminiClient *)client didFailWithError:(NSError *)error {
-    [self addErrorMessage:error.localizedDescription];
-    [self setProcessing:NO];
-    [self updateStatus:@"Error"];
-}
-
-#pragma mark - Function Call Handling (Legacy)
-
-- (void)handleFunctionCalls:(NSArray<GeminiFunctionCall *> *)calls {
-    if (calls.count == 0) return;
-
-    // Process function calls sequentially
-    [self processFunctionCallAtIndex:0 calls:calls];
-}
-
-- (void)processFunctionCallAtIndex:(NSUInteger)index calls:(NSArray<GeminiFunctionCall *> *)calls {
-    if (index >= calls.count) {
-        NSLog(@"[Gemini] All function calls processed");
-        return;
-    }
-
-    GeminiFunctionCall *call = calls[index];
-    NSLog(@"[Gemini] Processing function call %lu/%lu: %@", (unsigned long)(index + 1), (unsigned long)calls.count, call.name);
-    [self updateStatus:[self friendlyStatusForTool:call.name]];
-
-    [self executeMCPTool:call.name args:call.args completion:^(NSString *result) {
-        NSLog(@"[Gemini] Function %@ returned, sending result to Gemini", call.name);
-
-        // Show function result in chat only if debug mode is enabled
-        if ([DebugConfigWindowController showDebugInChatEnabled]) {
-            [self addFunctionMessage:call.name result:result];
-        }
-
-        // Send result back to Gemini
-        [self.geminiClient sendFunctionResult:call.name result:result];
-        NSLog(@"[Gemini] sendFunctionResult called for %@", call.name);
-    }];
-}
 
 #pragma mark - RAGClientDelegate
 

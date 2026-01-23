@@ -2,13 +2,10 @@
 //  AppDelegate.m
 //  mcpwa
 //
-//  MCP Server for WhatsApp Desktop - Cocoa App with logging UI
+//  WhatsApp Assistant - Cocoa App with logging UI
 //
 
 #import "AppDelegate.h"
-#import "MCPServer.h"
-#import "MCPSocketTransport.h"
-#import "MCPStdioTransport.h"
 #import "WAAccessibility.h"
 #import "WAAccessibilityExplorer.h"
 #import "WAAccessibilityTest.h"
@@ -19,17 +16,12 @@
 #import "RAGClient.h"
 
 @interface AppDelegate ()
-@property (nonatomic, strong) MCPServer *server;
-@property (nonatomic, assign) BOOL serverRunning;
-@property (nonatomic, assign) MCPTransportType transportType;
-@property (nonatomic, strong) NSString *customSocketPath;
 @property (nonatomic, strong) BotChatWindowController *botChatController;
 @end
 
 @implementation AppDelegate
 
 - (void)applicationDidFinishLaunching:(NSNotification *)notification {
-    [self parseCommandLineArguments];
     [self setupLogWindow];
     [self checkInitialStatus];
 
@@ -42,36 +34,9 @@
                                                  name:WALogNotification
                                                object:nil];
 
-    // Auto-start server on launch
-    [self startServer];
-
     // Show Bot Chat as main window
     self.botChatController = [BotChatWindowController sharedController];
     [self.botChatController showWindow];
-}
-
-- (void)parseCommandLineArguments {
-    NSArray *args = [[NSProcessInfo processInfo] arguments];
-    
-    // Default to socket transport
-    self.transportType = MCPTransportTypeSocket;
-    self.customSocketPath = nil;
-    
-    for (NSUInteger i = 1; i < args.count; i++) {
-        NSString *arg = args[i];
-        
-        if ([arg isEqualToString:@"--stdio"]) {
-            self.transportType = MCPTransportTypeStdio;
-        }
-        else if ([arg isEqualToString:@"--socket"]) {
-            self.transportType = MCPTransportTypeSocket;
-            // Check for optional path argument
-            if (i + 1 < args.count && ![args[i + 1] hasPrefix:@"--"]) {
-                self.customSocketPath = args[i + 1];
-                i++;
-            }
-        }
-    }
 }
 
 - (void)setupLogWindow {
@@ -142,8 +107,8 @@
 
     // Welcome message
     [self appendLog:@"╔══════════════════════════════════════════════════════════════╗" color:NSColor.cyanColor];
-    [self appendLog:@"║           WhatsApp Connector v1.0                            ║" color:NSColor.cyanColor];
-    [self appendLog:@"║   MCP Server for WhatsApp Desktop via Accessibility API      ║" color:NSColor.cyanColor];
+    [self appendLog:@"║           WhatsApp Assistant v1.0                            ║" color:NSColor.cyanColor];
+    [self appendLog:@"║   Backend-powered chat with WhatsApp integration             ║" color:NSColor.cyanColor];
     [self appendLog:@"╚══════════════════════════════════════════════════════════════╝" color:NSColor.cyanColor];
     [self appendLog:@""];
 }
@@ -211,14 +176,6 @@
     } else if (!isAvailable) {
         icon = @"🟡";
         text = @" WhatsApp not running or not accessible";
-    } else if (self.serverRunning) {
-        if (self.server.isConnected) {
-            icon = @"🟢";
-            text = @" Server running - Client connected";
-        } else {
-            icon = @"🟡";
-            text = @" Server running - Waiting for client...";
-        }
     } else {
         icon = @"🟢";
         text = @" Ready";
@@ -236,100 +193,8 @@
     self.statusLabel.attributedStringValue = attrStr;
 }
 
-#pragma mark - Actions
-
-- (void)startServer {
-    BOOL hasPermission = AXIsProcessTrusted();
-    
-    if (!hasPermission) {
-        NSAlert *alert = [[NSAlert alloc] init];
-        alert.messageText = @"Accessibility Permission Required";
-        alert.informativeText = @"Please grant Accessibility permission in System Settings → Privacy & Security → Accessibility, then try again.";
-        alert.alertStyle = NSAlertStyleWarning;
-        [alert addButtonWithTitle:@"Open System Settings"];
-        [alert addButtonWithTitle:@"Cancel"];
-        
-        if ([alert runModal] == NSAlertFirstButtonReturn) {
-            [[NSWorkspace sharedWorkspace] openURL:[NSURL URLWithString:@"x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility"]];
-        }
-        return;
-    }
-    
-    [self appendLog:@"Starting MCP server..." color:NSColor.cyanColor];
-    
-    // Create transport based on configuration
-    id<MCPTransport> transport;
-    NSString *transportDesc;
-    
-    if (self.transportType == MCPTransportTypeStdio) {
-        transport = [[MCPStdioTransport alloc] init];
-        transportDesc = @"stdio";
-    } else {
-        if (self.customSocketPath) {
-            transport = [[MCPSocketTransport alloc] initWithSocketPath:self.customSocketPath];
-            transportDesc = [NSString stringWithFormat:@"socket: %@", self.customSocketPath];
-        } else {
-            transport = [[MCPSocketTransport alloc] init];
-            transportDesc = [NSString stringWithFormat:@"socket: %@", kMCPDefaultSocketPath];
-        }
-    }
-    
-    self.server = [[MCPServer alloc] initWithTransport:transport delegate:self];
-    
-    NSError *error = nil;
-    if (![self.server start:&error]) {
-        [self appendLog:[NSString stringWithFormat:@"❌ Failed to start server: %@", error.localizedDescription]
-                  color:NSColor.redColor];
-        self.server = nil;
-        return;
-    }
-    
-    self.serverRunning = YES;
-    [self updateStatusLabel];
-    
-    [self appendLog:[NSString stringWithFormat:@"✅ Server started - listening on %@", transportDesc]
-              color:NSColor.greenColor];
-    [self appendLog:@"   Waiting for client connection..." color:NSColor.systemGrayColor];
-    [self appendLog:@""];
-}
-
-- (void)stopServer {
-    [self appendLog:@"Stopping MCP server..." color:NSColor.yellowColor];
-    
-    [self.server stop];
-    self.server = nil;
-    
-    self.serverRunning = NO;
-    [self updateStatusLabel];
-    
-    [self appendLog:@"Server stopped" color:NSColor.yellowColor];
-    [self appendLog:@""];
-}
-
-#pragma mark - MCPServerDelegate (connection events)
-
-- (void)serverDidConnect {
-    [self updateStatusLabel];
-}
-
-- (void)serverDidDisconnect {
-    [self updateStatusLabel];
-}
-
 - (void)checkPermissions:(id)sender {
     [self appendLog:@"Checking status..." color:NSColor.cyanColor];
-
-    // MCP Server status
-    if (self.serverRunning) {
-        [self appendLog:@"  • MCP Server: ✅ Running" color:NSColor.greenColor];
-        if (self.server.isConnected) {
-            [self appendLog:@"  • MCP Client: ✅ Connected" color:NSColor.greenColor];
-        } else {
-            [self appendLog:@"  • MCP Client: ⏳ Waiting for connection..." color:NSColor.yellowColor];
-        }
-    } else {
-        [self appendLog:@"  • MCP Server: ⚠️ Not running" color:NSColor.yellowColor];
-    }
 
     BOOL hasPermission = AXIsProcessTrusted();
     WAAccessibility *wa = [WAAccessibility shared];
@@ -375,15 +240,15 @@
         NSString *line = message.length > 0 ?
         [NSString stringWithFormat:@"[%@] %@\n", timestamp, message] :
         @"\n";
-        
+
         NSColor *textColor = color ?: [NSColor colorWithWhite:0.85 alpha:1.0];
         NSDictionary *attrs = @{
             NSForegroundColorAttributeName: textColor,
             NSFontAttributeName: [NSFont monospacedSystemFontOfSize:11 weight:NSFontWeightRegular]
         };
-        
+
         NSAttributedString *attrString = [[NSAttributedString alloc] initWithString:line attributes:attrs];
-        
+
         [self.logView.textStorage appendAttributedString:attrString];
         [self.logView scrollToEndOfDocument:nil];
     });
@@ -428,7 +293,7 @@
 - (void)handleLogNotification:(NSNotification *)notification {
     NSString *message = notification.userInfo[@"message"];
     NSString *level = notification.userInfo[@"level"];
-    
+
     NSColor *color;
     if ([level isEqualToString:@"ERROR"]) {
         color = NSColor.redColor;
@@ -439,7 +304,7 @@
     } else {
         color = [NSColor colorWithWhite:0.6 alpha:1.0];  // DEBUG - dimmer
     }
-    
+
     NSString *logMessage = [NSString stringWithFormat:@"[%@] %@", level, message];
     [self appendLog:logMessage color:color];
 }
@@ -451,9 +316,7 @@
 }
 
 - (void)applicationWillTerminate:(NSNotification *)notification {
-    if (self.serverRunning) {
-        [self stopServer];
-    }
+    // Cleanup if needed
 }
 
 #pragma mark - Menu Actions

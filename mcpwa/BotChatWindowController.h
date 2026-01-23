@@ -2,12 +2,10 @@
 //  BotChatWindowController.h
 //  mcpwa
 //
-//  Bot Chat Window - Gemini-powered chat with WhatsApp MCP integration
-//  Supports both MCP mode (WhatsApp) and RAG mode (Knowledge Base)
+//  Bot Chat Window - Backend-powered chat with WhatsApp integration
 //
 
 #import <Cocoa/Cocoa.h>
-#import "GeminiClient.h"
 #import "RAGClient.h"
 #import "SettingsWindowController.h"
 
@@ -30,7 +28,8 @@ typedef NS_ENUM(NSInteger, ChatMessageType) {
 @property (nonatomic, assign) BOOL isLoading;
 @end
 
-@interface BotChatWindowController : NSWindowController <GeminiClientDelegate, RAGClientDelegate, NSTextFieldDelegate>
+@interface BotChatWindowController : NSWindowController <NSTextFieldDelegate>
+// Note: RAGClientDelegate is declared in BotChatWindowController+DelegateHandlers.h
 
 /// Shared instance (singleton pattern for easy access)
 + (instancetype)sharedController;
@@ -54,8 +53,7 @@ typedef NS_ENUM(NSInteger, ChatMessageType) {
 
 #pragma mark - Properties for Category Access
 
-// API Clients
-@property (nonatomic, strong) GeminiClient *geminiClient;
+// API Client
 @property (nonatomic, strong) RAGClient *ragClient;
 
 // Messages
@@ -81,9 +79,7 @@ typedef NS_ENUM(NSInteger, ChatMessageType) {
 // UI Components - Status Bar
 @property (nonatomic, strong) NSProgressIndicator *loadingIndicator;
 @property (nonatomic, strong) NSTextField *statusLabel;
-@property (nonatomic, strong) NSTextField *modeIndicator;
 @property (nonatomic, strong) NSPopUpButton *modelSelector;
-@property (nonatomic, strong) NSPopUpButton *ragModelSelector;
 @property (nonatomic, strong) NSArray<RAGModelItem *> *ragModels;
 @property (nonatomic, copy, nullable) NSString *selectedRAGModelId;
 
@@ -92,11 +88,7 @@ typedef NS_ENUM(NSInteger, ChatMessageType) {
 @property (nonatomic, assign) BOOL isCancelled;
 @property (nonatomic, assign) BOOL hasTitleBeenGenerated;
 @property (nonatomic, copy, nullable) NSString *firstUserMessage;
-@property (nonatomic, assign) WAChatMode currentChatMode;
 @property (nonatomic, assign) CGFloat currentFontSize;
-
-// MCP Tools
-@property (nonatomic, strong, nullable) NSArray<NSDictionary *> *mcpTools;
 
 // Streaming Support
 @property (nonatomic, strong, nullable) NSMutableString *streamingResponse;
@@ -112,23 +104,28 @@ typedef NS_ENUM(NSInteger, ChatMessageType) {
 
 #pragma mark - Internal Methods for Category Access
 
-/// Add a message bubble to the chat (used by MessageRendering and ThemeHandling)
-- (void)addMessageBubble:(ChatDisplayMessage *)message;
-
-/// Create attributed string from markdown (used by MessageRendering and StreamingSupport)
-- (NSAttributedString *)attributedStringFromMarkdown:(NSString *)markdown textColor:(NSColor *)textColor;
-
-/// Update input text view height based on content
-- (void)updateInputHeight;
-
-/// Scroll chat to bottom
-- (void)scrollToBottom;
+// Note: addMessageBubble:, attributedStringFromMarkdown:textColor:, updateInputHeight,
+// and scrollToBottom are declared in their respective category headers
 
 /// Update status label text
 - (void)updateStatus:(NSString *)status;
 
 /// Set processing state (show/hide loading indicator, enable/disable input)
 - (void)setProcessing:(BOOL)processing;
+
+#pragma mark - Client Setup
+
+/// Initialize the RAG client with service URL
+- (void)setupRAGClient;
+
+/// Populate the model selector dropdown
+- (void)populateModelSelector;
+
+/// Handle model selection change
+- (void)modelChanged:(NSPopUpButton *)sender;
+
+/// Generate a title for the chat window based on the first user message
+- (void)generateTitleIfNeeded;
 
 @end
 

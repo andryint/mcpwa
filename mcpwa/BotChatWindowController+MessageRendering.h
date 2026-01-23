@@ -27,8 +27,7 @@ NS_ASSUME_NONNULL_BEGIN
 - (void)addErrorMessage:(NSString *)text;
 
 /// Add a message bubble to the chat (core bubble rendering)
-/// Note: This is declared in the main header for cross-category access
-// - (void)addMessageBubble:(ChatDisplayMessage *)message;
+- (void)addMessageBubble:(ChatDisplayMessage *)message;
 
 @end
 

@@ -9,6 +9,7 @@
 #import "BotChatWindowController+ThemeHandling.h"
 #import "BotChatWindowController+ScrollManagement.h"
 #import "BotChatWindowController+ZoomActions.h"
+#import "BotChatWindowController+MarkdownParser.h"
 
 @implementation BotChatWindowController (MessageRendering)
 

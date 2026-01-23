@@ -2,28 +2,14 @@
 //  BotChatWindowController+DelegateHandlers.h
 //  mcpwa
 //
-//  Delegate handlers for GeminiClient and RAGClient
+//  Delegate handlers for RAGClient
 //
 
 #import "BotChatWindowController.h"
 
 NS_ASSUME_NONNULL_BEGIN
 
-@interface BotChatWindowController (DelegateHandlers) <GeminiClientDelegate, RAGClientDelegate>
-
-#pragma mark - GeminiClientDelegate
-
-- (void)geminiClient:(GeminiClient *)client didCompleteSendWithResponse:(GeminiChatResponse *)response;
-- (void)geminiClient:(GeminiClient *)client didCompleteToolLoopWithResponse:(GeminiChatResponse *)response;
-- (void)geminiClient:(GeminiClient *)client didFailWithError:(NSError *)error;
-
-#pragma mark - Function Call Handling (Legacy)
-
-/// Handle function calls from Gemini response (used when toolExecutor is not set)
-- (void)handleFunctionCalls:(NSArray<GeminiFunctionCall *> *)calls;
-
-/// Process a single function call at the given index (recursive for sequential execution)
-- (void)processFunctionCallAtIndex:(NSUInteger)index calls:(NSArray<GeminiFunctionCall *> *)calls;
+@interface BotChatWindowController (DelegateHandlers) <RAGClientDelegate>
 
 #pragma mark - RAGClientDelegate
 
