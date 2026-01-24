@@ -72,19 +72,44 @@
         // Add sources if available
         if (response.sources.count > 0) {
             [responseText appendString:@"\n\n**Sources:**\n"];
+            NSInteger sourceIndex = 1;
+
+            // Check if Debug menu is visible (not hidden)
+            BOOL showDebugInfo = NO;
+            NSMenu *mainMenu = [NSApp mainMenu];
+            for (NSMenuItem *item in mainMenu.itemArray) {
+                if ([item.title isEqualToString:@"Debug"]) {
+                    showDebugInfo = !item.hidden;
+                    break;
+                }
+            }
+
             for (NSDictionary *source in response.sources) {
-                // RAG API returns: chat_name, time_start, chat_id, is_group, participants, etc.
+                // RAG API returns: chat_name, time_start, chat_id, is_group, participants, search_snippet, etc.
                 NSString *chatName = source[@"chat_name"] ?: @"Unknown";
                 NSString *timeStart = source[@"time_start"];
+                NSString *searchSnippet = source[@"search_snippet"];
 
-                // Format date from ISO format (e.g., "2025-12-24T17:18:00")
-                NSString *dateStr = @"";
-                if (timeStart.length >= 10) {
-                    // Extract just the date portion (YYYY-MM-DD)
-                    dateStr = [NSString stringWithFormat:@" [%@]", [timeStart substringToIndex:10]];
+                // Format date and time from ISO format (e.g., "2025-12-24T17:18:00")
+                NSString *dateTimeStr = @"";
+                if (timeStart.length >= 16) {
+                    // Extract date and time (YYYY-MM-DD HH:MM)
+                    NSString *datePart = [timeStart substringToIndex:10];
+                    NSString *timePart = [timeStart substringWithRange:NSMakeRange(11, 5)];
+                    dateTimeStr = [NSString stringWithFormat:@" [%@ %@]", datePart, timePart];
+                } else if (timeStart.length >= 10) {
+                    // Fallback to just date if time not available
+                    dateTimeStr = [NSString stringWithFormat:@" [%@]", [timeStart substringToIndex:10]];
                 }
 
-                [responseText appendFormat:@"- %@%@\n", chatName, dateStr];
+                [responseText appendFormat:@"[%ld] %@%@\n", (long)sourceIndex, chatName, dateTimeStr];
+
+                // Show search_snippet in debug mode
+                if (showDebugInfo && searchSnippet.length > 0) {
+                    [responseText appendFormat:@"    *%@*\n", searchSnippet];
+                }
+
+                sourceIndex++;
             }
         }
 
