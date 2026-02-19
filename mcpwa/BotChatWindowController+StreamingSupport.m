@@ -54,6 +54,7 @@
     textView.textContainer.containerSize = NSMakeSize(maxBubbleWidth, CGFLOAT_MAX);
     textView.verticallyResizable = YES;
     textView.horizontallyResizable = NO;
+    textView.delegate = self;  // Handle wasource:// link clicks
 
     [bubble addSubview:textView];
     [bubbleContainer addSubview:bubble];

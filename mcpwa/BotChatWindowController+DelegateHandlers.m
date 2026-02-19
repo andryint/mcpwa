@@ -47,6 +47,9 @@
             return;
         }
 
+        // Store sources for clickable reference lookup
+        self.lastSources = response.sources;
+
         // Remove the streaming bubble - we'll replace it with the final formatted message
         NSLog(@"[RAG UI] Removing streaming bubble: %@", self.streamingBubbleView);
         if (self.streamingBubbleView) {

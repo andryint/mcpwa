@@ -1674,6 +1674,47 @@
     return result;
 }
 
+#pragma mark - Source Reference Navigation
+
+- (BOOL)navigateToChat:(NSString *)chatName nearDate:(NSString *)dateString {
+    [WALogger info:@"navigateToChat: '%@' nearDate: '%@'", chatName, dateString ?: @"nil"];
+
+    // Ensure WhatsApp is visible and bring it to foreground
+    if (![self ensureWhatsAppVisible]) {
+        [WALogger error:@"navigateToChat: WhatsApp not available"];
+        return NO;
+    }
+
+    if (![self activateWhatsApp]) {
+        [WALogger error:@"navigateToChat: Could not activate WhatsApp"];
+        return NO;
+    }
+
+    // Open the referenced chat
+    if (![self openChatWithName:chatName]) {
+        [WALogger error:@"navigateToChat: Could not open chat '%@'", chatName];
+        return NO;
+    }
+
+    [WALogger info:@"navigateToChat: Successfully opened chat '%@'", chatName];
+
+    // If we have a date, try to search within the chat to get close to that time
+    if (dateString.length >= 10) {
+        [NSThread sleepForTimeInterval:0.5]; // Wait for chat to fully load
+
+        pid_t waPid = self.whatsappPID;
+        if (waPid != 0) {
+            // Extract a readable date for in-chat search (e.g., "24/12/2025" or "12/24/2025")
+            // WhatsApp search-in-chat works with message content, not dates directly
+            // But we can try Cmd+Shift+F to open "Search in chat" and type a date fragment
+            // For now, just log the date - future enhancement can add in-chat search
+            [WALogger info:@"navigateToChat: Date reference: %@", dateString];
+        }
+    }
+
+    return YES;
+}
+
 #pragma mark - Actions
 
 - (BOOL)sendMessage:(NSString *)message {

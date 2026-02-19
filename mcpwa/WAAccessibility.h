@@ -169,6 +169,15 @@ typedef NS_ENUM(NSInteger, WAMessageDirection) {
 /// Clear the search field and return to normal chat list view
 - (BOOL)clearSearch;
 
+#pragma mark - Source Reference Navigation
+
+/// Navigate to a chat and optionally search for content near a date
+/// Used by clickable source references in the chat UI
+/// @param chatName The name of the WhatsApp chat to open
+/// @param dateString ISO date string (e.g., "2025-12-24T17:18:00") or nil
+/// @return YES if WhatsApp was activated and the chat was opened
+- (BOOL)navigateToChat:(NSString *)chatName nearDate:(nullable NSString *)dateString;
+
 #pragma mark - Actions
 
 /// Send a message to the current chat

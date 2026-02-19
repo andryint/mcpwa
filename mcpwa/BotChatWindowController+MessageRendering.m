@@ -181,6 +181,7 @@
 
     // Enable clickable links
     textView.automaticLinkDetectionEnabled = NO;
+    textView.delegate = self;  // Handle wasource:// link clicks
     [textView setLinkTextAttributes:@{
         NSForegroundColorAttributeName: [NSColor linkColor],
         NSUnderlineStyleAttributeName: @(NSUnderlineStyleSingle),

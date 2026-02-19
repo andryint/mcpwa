@@ -96,6 +96,9 @@ typedef NS_ENUM(NSInteger, ChatMessageType) {
 @property (nonatomic, strong, nullable) NSView *streamingBubbleView;
 @property (nonatomic, assign) CGFloat streamingMaxWidth;
 
+// Sources (for clickable references)
+@property (nonatomic, strong, nullable) NSArray<NSDictionary *> *lastSources;
+
 // Scroll Management
 @property (nonatomic, strong, nullable) NSView *bottomSpacerView;
 @property (nonatomic, strong, nullable) NSLayoutConstraint *bottomSpacerHeightConstraint;

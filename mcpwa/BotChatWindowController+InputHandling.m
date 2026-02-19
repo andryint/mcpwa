@@ -9,6 +9,8 @@
 #import "BotChatWindowController+MessageRendering.h"
 #import "BotChatWindowController+StreamingSupport.h"
 #import "DebugConfigWindowController.h"
+#import "WAAccessibility.h"
+#import "WALogger.h"
 
 @implementation BotChatWindowController (InputHandling)
 
@@ -71,6 +73,55 @@
 - (void)textDidChange:(NSNotification *)notification {
     [self updatePlaceholder];
     [self updateInputHeight];
+}
+
+- (BOOL)textView:(NSTextView *)textView clickedOnLink:(id)link atIndex:(NSUInteger)charIndex {
+    // Handle wasource:// links (clickable source references)
+    NSURL *url = nil;
+    if ([link isKindOfClass:[NSURL class]]) {
+        url = link;
+    } else if ([link isKindOfClass:[NSString class]]) {
+        url = [NSURL URLWithString:link];
+    }
+
+    if (!url || ![[url scheme] isEqualToString:@"wasource"]) {
+        return NO;  // Let default handling take care of regular links
+    }
+
+    // Extract source index from wasource://N
+    NSInteger sourceIndex = [[url host] integerValue];
+    if (sourceIndex <= 0) {
+        [WALogger warn:@"[Source Link] Invalid source index: %@", [url host]];
+        return YES;
+    }
+
+    // Look up source in lastSources (1-based index)
+    NSArray<NSDictionary *> *sources = self.lastSources;
+    if (!sources || sourceIndex > (NSInteger)sources.count) {
+        [WALogger warn:@"[Source Link] Source index %ld out of range (have %lu sources)",
+            (long)sourceIndex, (unsigned long)sources.count];
+        return YES;
+    }
+
+    NSDictionary *source = sources[sourceIndex - 1];
+    NSString *chatName = source[@"chat_name"];
+    NSString *timeStart = source[@"time_start"];
+
+    if (!chatName) {
+        [WALogger warn:@"[Source Link] No chat_name in source %ld", (long)sourceIndex];
+        return YES;
+    }
+
+    [WALogger info:@"[Source Link] Navigating to source [%ld]: chat='%@', time='%@'",
+        (long)sourceIndex, chatName, timeStart ?: @"unknown"];
+
+    // Navigate on background thread (WAAccessibility uses sleeps)
+    dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
+        WAAccessibility *wa = [WAAccessibility shared];
+        [wa navigateToChat:chatName nearDate:timeStart];
+    });
+
+    return YES;  // We handled this link
 }
 
 #pragma mark - Input Management

@@ -6,6 +6,7 @@
 //
 
 #import "BotChatWindowController+MarkdownParser.h"
+#import "BotChatWindowController+ThemeHandling.h"
 
 @implementation BotChatWindowController (MarkdownParser)
 
@@ -60,7 +61,7 @@
         while (i < len) {
             unichar c = [line characterAtIndex:i];
 
-            // Check for markdown link [text](url)
+            // Check for markdown link [text](url) or source reference [N] / [N, M, ...]
             if (c == '[') {
                 NSUInteger textStart = i + 1;
                 NSUInteger textEnd = textStart;
@@ -68,7 +69,7 @@
                 while (textEnd < len && [line characterAtIndex:textEnd] != ']') {
                     textEnd++;
                 }
-                // Check for ( immediately after ]
+                // Check for ( immediately after ] → markdown link [text](url)
                 if (textEnd < len && textEnd + 1 < len && [line characterAtIndex:textEnd + 1] == '(') {
                     NSUInteger urlStart = textEnd + 2;
                     NSUInteger urlEnd = urlStart;
@@ -95,7 +96,64 @@
                         }
                     }
                 }
-                // Not a valid markdown link, treat [ as regular character
+
+                // Check for source reference [N] or [N, M, ...] (digits separated by ", ")
+                if (textEnd < len && textEnd > textStart) {
+                    NSString *bracketContent = [line substringWithRange:NSMakeRange(textStart, textEnd - textStart)];
+                    // Parse comma-separated numbers: "1" or "2, 3" or "1, 2, 3"
+                    NSArray *parts = [bracketContent componentsSeparatedByString:@", "];
+                    BOOL allNumbers = (parts.count > 0);
+                    NSMutableArray<NSNumber *> *sourceNumbers = [NSMutableArray array];
+                    for (NSString *part in parts) {
+                        NSString *trimmed = [part stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceCharacterSet]];
+                        if (trimmed.length == 0 || trimmed.length > 3) { allNumbers = NO; break; }
+                        NSInteger num = [trimmed integerValue];
+                        if (num <= 0 || ![trimmed isEqualToString:[NSString stringWithFormat:@"%ld", (long)num]]) {
+                            allNumbers = NO; break;
+                        }
+                        [sourceNumbers addObject:@(num)];
+                    }
+
+                    if (allNumbers && sourceNumbers.count > 0) {
+                        // Source reference link color (warm brown to match app accent)
+                        NSColor *sourceColor = isDarkMode() ?
+                            [NSColor colorWithRed:0.85 green:0.75 blue:0.65 alpha:1.0] :
+                            [NSColor colorWithRed:0.45 green:0.38 blue:0.32 alpha:1.0];
+
+                        NSDictionary *plainAttrs = @{
+                            NSFontAttributeName: lineFont,
+                            NSForegroundColorAttributeName: sourceColor
+                        };
+
+                        // Opening bracket
+                        [lineAttr appendAttributedString:[[NSAttributedString alloc] initWithString:@"[" attributes:plainAttrs]];
+
+                        for (NSUInteger si = 0; si < sourceNumbers.count; si++) {
+                            if (si > 0) {
+                                // Comma separator
+                                [lineAttr appendAttributedString:[[NSAttributedString alloc] initWithString:@", " attributes:plainAttrs]];
+                            }
+                            // Clickable number
+                            NSString *numStr = [sourceNumbers[si] stringValue];
+                            NSURL *sourceURL = [NSURL URLWithString:[NSString stringWithFormat:@"wasource://%@", numStr]];
+                            NSDictionary *linkAttrs = @{
+                                NSFontAttributeName: lineFont,
+                                NSForegroundColorAttributeName: sourceColor,
+                                NSUnderlineStyleAttributeName: @(NSUnderlineStyleSingle),
+                                NSLinkAttributeName: sourceURL,
+                                NSCursorAttributeName: [NSCursor pointingHandCursor]
+                            };
+                            [lineAttr appendAttributedString:[[NSAttributedString alloc] initWithString:numStr attributes:linkAttrs]];
+                        }
+
+                        // Closing bracket
+                        [lineAttr appendAttributedString:[[NSAttributedString alloc] initWithString:@"]" attributes:plainAttrs]];
+
+                        i = textEnd + 1; // Skip past the ]
+                        continue;
+                    }
+                }
+                // Not a valid markdown link or source reference, treat [ as regular character
             }
 
             // Check for bare URL (https:// or http://)
