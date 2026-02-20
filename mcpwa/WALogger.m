@@ -88,6 +88,7 @@ NSNotificationName const WALogNotification = @"WALogNotification";
                 @"clearSearch",
                 @"searchFor:",
                 @"navigateTo",
+                @"[Source Link]",
                 @"Found "  // "Found X chats" etc
             ];
         });

@@ -13,6 +13,7 @@
 
 - (void)appendLog:(NSString *)message;
 - (void)appendLog:(NSString *)message color:(NSColor *)color;
+- (IBAction)clearLog:(id)sender;
 
 #pragma mark - Debug Menu Actions
 - (IBAction)debugExplore:(id)sender;

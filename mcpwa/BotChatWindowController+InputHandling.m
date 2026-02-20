@@ -106,19 +106,28 @@
     NSDictionary *source = sources[sourceIndex - 1];
     NSString *chatName = source[@"chat_name"];
     NSString *timeStart = source[@"time_start"];
+    NSString *searchSnippet = source[@"search_snippet"];
 
     if (!chatName) {
         [WALogger warn:@"[Source Link] No chat_name in source %ld", (long)sourceIndex];
         return YES;
     }
 
-    [WALogger info:@"[Source Link] Navigating to source [%ld]: chat='%@', time='%@'",
-        (long)sourceIndex, chatName, timeStart ?: @"unknown"];
+    [WALogger info:@"[Source Link] Navigating to source [%ld]: chat='%@', time='%@', snippet='%@'",
+        (long)sourceIndex, chatName, timeStart ?: @"unknown",
+        searchSnippet.length > 40 ? [[searchSnippet substringToIndex:40] stringByAppendingString:@"..."] : (searchSnippet ?: @"none")];
 
     // Navigate on background thread (WAAccessibility uses sleeps)
     dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
         WAAccessibility *wa = [WAAccessibility shared];
-        [wa navigateToChat:chatName nearDate:timeStart];
+        BOOL success = [wa navigateToChat:chatName nearDate:timeStart searchSnippet:searchSnippet];
+        if (success) {
+            [WALogger info:@"[Source Link] Successfully navigated to source [%ld] in chat '%@'",
+                (long)sourceIndex, chatName];
+        } else {
+            [WALogger error:@"[Source Link] Failed to navigate to source [%ld] in chat '%@'",
+                (long)sourceIndex, chatName];
+        }
     });
 
     return YES;  // We handled this link

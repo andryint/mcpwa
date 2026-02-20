@@ -89,7 +89,7 @@
 
             for (NSDictionary *source in response.sources) {
                 // RAG API returns: chat_name, time_start, chat_id, is_group, participants, search_snippet, etc.
-                NSString *chatName = source[@"chat_name"] ?: @"Unknown";
+                NSString *chatName = [source[@"chat_name"] stringByReplacingOccurrencesOfString:@"_" withString:@" "] ?: @"Unknown";
                 NSString *timeStart = source[@"time_start"];
                 NSString *searchSnippet = source[@"search_snippet"];
 

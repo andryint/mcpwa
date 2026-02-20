@@ -74,6 +74,13 @@
 
 #pragma mark - String Helpers
 
+/// Normalize a chat name for comparison and search: replace underscores with spaces.
+/// Backend sources may store names like "AI_for_Productivity" while WhatsApp displays "AI for Productivity".
+- (NSString *)normalizeChatName:(NSString *)name {
+    if (!name) return nil;
+    return [name stringByReplacingOccurrencesOfString:@"_" withString:@" "];
+}
+
 /// Strip Unicode LTR marks and trim whitespace
 - (NSString *)cleanString:(NSString *)str {
     if (!str) return nil;
@@ -870,7 +877,7 @@
         return nil;
     }
 
-    NSString *lowerName = [name lowercaseString];
+    NSString *lowerName = [[self normalizeChatName:name] lowercaseString];
     WAChat *foundChat = nil;
 
     // Find chat results in search (ChatListSearchView_ChatResult)
@@ -912,7 +919,8 @@
 - (WAChat *)findChatWithName:(NSString *)name {
     [WALogger info:@"findChatWithName: '%@'", name];
 
-    NSString *lowerName = [name lowercaseString];
+    NSString *normalizedName = [self normalizeChatName:name];
+    NSString *lowerName = [normalizedName lowercaseString];
 
     // Step 1: Check if we're in search mode
     BOOL inSearchMode = [self isInSearchMode];
@@ -973,9 +981,9 @@
     [self pressKey:3 withFlags:kCGEventFlagMaskCommand toProcess:waPid];  // F key
     [NSThread sleepForTimeInterval:0.5];
 
-    // Type the search query
-    [WALogger debug:@"findChatWithName: typing query '%@'", name];
-    [self typeString:name toProcess:waPid];
+    // Type the search query (use normalized name with spaces instead of underscores)
+    [WALogger debug:@"findChatWithName: typing query '%@'", normalizedName];
+    [self typeString:normalizedName toProcess:waPid];
     [NSThread sleepForTimeInterval:0.8];
 
     CFRelease(window);
@@ -1676,8 +1684,53 @@
 
 #pragma mark - Source Reference Navigation
 
-- (BOOL)navigateToChat:(NSString *)chatName nearDate:(NSString *)dateString {
-    [WALogger info:@"navigateToChat: '%@' nearDate: '%@'", chatName, dateString ?: @"nil"];
+/**
+ * Extract a short, search-friendly fragment from a longer snippet.
+ * Takes the first few words (up to ~40 chars) and avoids cutting mid-word.
+ * Strips leading/trailing punctuation that might confuse WhatsApp search.
+ */
+- (NSString *)shortSearchFragmentFromSnippet:(NSString *)snippet {
+    if (!snippet || snippet.length == 0) {
+        [WALogger debug:@"navigateToChat: shortSearchFragment: input is nil/empty"];
+        return nil;
+    }
+
+    // Clean up: trim whitespace and common wrapping chars
+    NSString *clean = [snippet stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+    if (clean.length == 0) {
+        [WALogger debug:@"navigateToChat: shortSearchFragment: cleaned snippet is empty"];
+        return nil;
+    }
+
+    // If already short enough, use as-is
+    if (clean.length <= 40) {
+        [WALogger debug:@"navigateToChat: shortSearchFragment: using full snippet (%lu chars): '%@'",
+            (unsigned long)clean.length, clean];
+        return clean;
+    }
+
+    // Take first ~40 chars but don't cut mid-word
+    NSRange spaceRange = [clean rangeOfString:@" "
+                                      options:NSBackwardsSearch
+                                        range:NSMakeRange(0, 40)];
+    if (spaceRange.location != NSNotFound && spaceRange.location > 10) {
+        NSString *result = [clean substringToIndex:spaceRange.location];
+        [WALogger debug:@"navigateToChat: shortSearchFragment: truncated at word boundary (%lu → %lu chars): '%@'",
+            (unsigned long)clean.length, (unsigned long)result.length, result];
+        return result;
+    }
+
+    // No good word boundary found, just use first 40 chars
+    NSString *result = [clean substringToIndex:40];
+    [WALogger debug:@"navigateToChat: shortSearchFragment: hard truncated (%lu → 40 chars): '%@'",
+        (unsigned long)clean.length, result];
+    return result;
+}
+
+- (BOOL)navigateToChat:(NSString *)chatName nearDate:(NSString *)dateString searchSnippet:(NSString *)searchSnippet {
+    [WALogger info:@"navigateToChat: '%@' nearDate: '%@' snippet: '%@'",
+        chatName, dateString ?: @"nil",
+        searchSnippet.length > 50 ? [[searchSnippet substringToIndex:50] stringByAppendingString:@"..."] : (searchSnippet ?: @"nil")];
 
     // Ensure WhatsApp is visible and bring it to foreground
     if (![self ensureWhatsAppVisible]) {
@@ -1690,28 +1743,162 @@
         return NO;
     }
 
-    // Open the referenced chat
+    // Strategy: If we have a search snippet, use WhatsApp's global search to find
+    // the exact message. Clicking on the search result navigates directly to it.
+    // If no snippet, fall back to just opening the chat by name.
+
+    NSString *searchQuery = [self shortSearchFragmentFromSnippet:searchSnippet];
+
+    if (searchQuery.length == 0) {
+        [WALogger warn:@"navigateToChat: No search_snippet available for '%@' (date: %@), cannot do message-level navigation",
+            chatName, dateString ?: @"nil"];
+    }
+
+    if (searchQuery.length > 0) {
+        [WALogger info:@"navigateToChat: Using global search with query: '%@'", searchQuery];
+
+        pid_t waPid = self.whatsappPID;
+        if (waPid == 0) {
+            [WALogger error:@"navigateToChat: no WhatsApp PID"];
+            return NO;
+        }
+
+        AXUIElementRef window = [self getMainWindow];
+        if (!window) {
+            [WALogger error:@"navigateToChat: no main window"];
+            return NO;
+        }
+
+        // Clear any existing search
+        AXUIElementRef clearButton = [self findElementWithIdentifier:@"TokenizedSearchBar_DeleteButton" inElement:window];
+        if (clearButton) {
+            [WALogger debug:@"navigateToChat: Clearing existing search"];
+            [self pressElement:clearButton];
+            CFRelease(clearButton);
+            [NSThread sleepForTimeInterval:0.2];
+        } else {
+            [WALogger debug:@"navigateToChat: No existing search to clear"];
+        }
+
+        // Open global search with Cmd+F
+        [WALogger debug:@"navigateToChat: Opening global search (Cmd+F)"];
+        [self pressKey:3 withFlags:kCGEventFlagMaskCommand toProcess:waPid];  // F key
+        [NSThread sleepForTimeInterval:0.5];
+
+        // Type the search query
+        [WALogger debug:@"navigateToChat: Typing search query (%lu chars)", (unsigned long)searchQuery.length];
+        [self typeString:searchQuery toProcess:waPid];
+        [NSThread sleepForTimeInterval:1.0]; // Wait for search results
+
+        CFRelease(window);
+
+        // Re-get window after search
+        window = [self getMainWindow];
+        if (!window) {
+            [WALogger error:@"navigateToChat: Lost main window after search, falling back to openChat"];
+            return [self openChatWithName:chatName];
+        }
+
+        // Look for message results (ChatListSearchView_MessageResult) that match our chat
+        NSString *lowerChatName = [[self normalizeChatName:chatName] lowercaseString];
+        NSArray *messageResults = [self findElementsIn:window predicate:^BOOL(AXUIElementRef element, NSString *role, NSString *identifier) {
+            return [identifier isEqualToString:@"ChatListSearchView_MessageResult"];
+        } maxDepth:15];
+
+        [WALogger info:@"navigateToChat: Found %lu message results", (unsigned long)messageResults.count];
+
+        BOOL clickedResult = NO;
+        NSUInteger resultIndex = 0;
+
+        for (id msgResult in messageResults) {
+            AXUIElementRef resultElement = (__bridge AXUIElementRef)msgResult;
+            resultIndex++;
+
+            // Check if this result is from the right chat
+            // The message result contains child AXStaticText with description "ChatName, Sender: preview..."
+            NSArray *textElements = [self findElementsIn:resultElement predicate:^BOOL(AXUIElementRef element, NSString *role, NSString *identifier) {
+                return [role isEqualToString:@"AXStaticText"];
+            } maxDepth:3];
+
+            [WALogger debug:@"navigateToChat: Result %lu has %lu text elements",
+                (unsigned long)resultIndex, (unsigned long)textElements.count];
+
+            BOOL foundMatchInResult = NO;
+
+            for (id textElem in textElements) {
+                AXUIElementRef staticText = (__bridge AXUIElementRef)textElem;
+                NSString *desc = [self descriptionOfElement:staticText];
+                if (desc && [[desc lowercaseString] containsString:lowerChatName]) {
+                    [WALogger info:@"navigateToChat: Result %lu matches chat '%@': '%@'",
+                        (unsigned long)resultIndex, chatName,
+                        desc.length > 80 ? [[desc substringToIndex:80] stringByAppendingString:@"..."] : desc];
+                    foundMatchInResult = YES;
+
+                    // Click the message result - this navigates directly to the message.
+                    // Strategy: try child AXButton first, then the result element itself.
+                    NSString *resultRole = [self roleOfElement:resultElement];
+                    [WALogger debug:@"navigateToChat: Result element role: '%@'", resultRole ?: @"nil"];
+
+                    NSArray *buttons = [self findElementsIn:resultElement predicate:^BOOL(AXUIElementRef element, NSString *role, NSString *identifier) {
+                        return [role isEqualToString:@"AXButton"];
+                    } maxDepth:3];
+
+                    if (buttons.count > 0) {
+                        [WALogger debug:@"navigateToChat: Found %lu child buttons, clicking first", (unsigned long)buttons.count];
+                        AXUIElementPerformAction((__bridge AXUIElementRef)buttons[0], CFSTR("AXScrollToVisible"));
+                        clickedResult = [self pressElement:(__bridge AXUIElementRef)buttons[0]];
+                        [WALogger info:@"navigateToChat: Clicked child button: %@", clickedResult ? @"YES" : @"NO"];
+                    } else {
+                        // No child button — try pressing the result element directly
+                        [WALogger debug:@"navigateToChat: No child button, pressing result element directly (role: %@)", resultRole];
+                        AXUIElementPerformAction(resultElement, CFSTR("AXScrollToVisible"));
+                        clickedResult = [self pressElement:resultElement];
+                        [WALogger info:@"navigateToChat: Pressed result element directly: %@", clickedResult ? @"YES" : @"NO"];
+                    }
+
+                    // Release buttons
+                    for (id btn in buttons) {
+                        CFRelease((__bridge AXUIElementRef)btn);
+                    }
+
+                    break;  // Found match in this result, stop checking text elements
+                } else {
+                    [WALogger debug:@"navigateToChat: Result %lu text does not match: '%@'",
+                        (unsigned long)resultIndex,
+                        desc.length > 60 ? [[desc substringToIndex:60] stringByAppendingString:@"..."] : (desc ?: @"nil")];
+                }
+            }
+
+            // Release text elements
+            for (id te in textElements) {
+                CFRelease((__bridge AXUIElementRef)te);
+            }
+
+            if (clickedResult) break;
+        }
+
+        // Release all message result elements
+        for (id elem in messageResults) {
+            CFRelease((__bridge AXUIElementRef)elem);
+        }
+
+        CFRelease(window);
+
+        if (clickedResult) {
+            [WALogger info:@"navigateToChat: Successfully navigated to message via search"];
+            return YES;
+        }
+
+        [WALogger warn:@"navigateToChat: No matching message result found, falling back to openChat"];
+    }
+
+    // Fallback: just open the chat by name (no message-level navigation)
     if (![self openChatWithName:chatName]) {
         [WALogger error:@"navigateToChat: Could not open chat '%@'", chatName];
         return NO;
     }
 
-    [WALogger info:@"navigateToChat: Successfully opened chat '%@'", chatName];
-
-    // If we have a date, try to search within the chat to get close to that time
-    if (dateString.length >= 10) {
-        [NSThread sleepForTimeInterval:0.5]; // Wait for chat to fully load
-
-        pid_t waPid = self.whatsappPID;
-        if (waPid != 0) {
-            // Extract a readable date for in-chat search (e.g., "24/12/2025" or "12/24/2025")
-            // WhatsApp search-in-chat works with message content, not dates directly
-            // But we can try Cmd+Shift+F to open "Search in chat" and type a date fragment
-            // For now, just log the date - future enhancement can add in-chat search
-            [WALogger info:@"navigateToChat: Date reference: %@", dateString];
-        }
-    }
-
+    [WALogger info:@"navigateToChat: Opened chat '%@' (without message-level navigation)", chatName];
     return YES;
 }
 

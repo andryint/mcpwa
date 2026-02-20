@@ -196,6 +196,11 @@
                                                 <action selector="toggleLogWindow:" target="Voe-Tx-rLC" id="dbg-log-act"/>
                                             </connections>
                                         </menuItem>
+                                        <menuItem title="Clear Log" keyEquivalent="k" id="dbg-clr-001" userLabel="Clear Log">
+                                            <connections>
+                                                <action selector="clearLog:" target="Voe-Tx-rLC" id="dbg-clr-act"/>
+                                            </connections>
+                                        </menuItem>
                                         <menuItem isSeparatorItem="YES" id="dbg-log-sep"/>
                                         <menuItem title="WhatsApp AX" id="wa-ax-mnu-001" userLabel="WhatsApp AX">
                                             <modifierMask key="keyEquivalentModifierMask"/>

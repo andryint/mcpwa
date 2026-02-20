@@ -639,6 +639,11 @@
     }
 }
 
+- (IBAction)clearLog:(id)sender {
+    [self.logView.textStorage setAttributedString:[[NSAttributedString alloc] initWithString:@""]];
+    [self appendLog:@"--- Log cleared ---" color:NSColor.systemGrayColor];
+}
+
 #pragma mark - Settings Actions
 
 - (IBAction)showSettings:(id)sender {
