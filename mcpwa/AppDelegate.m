@@ -41,12 +41,12 @@
 }
 
 - (void)setupDebugMenu {
-    // Find and store reference to Debug menu, shown by default (Shift+F1 to toggle)
+    // Find and store reference to Debug menu, hidden by default (Shift+F1 to toggle)
     NSMenu *mainMenu = [NSApp mainMenu];
     for (NSMenuItem *item in mainMenu.itemArray) {
         if ([item.title isEqualToString:@"Debug"]) {
             self.debugMenuItem = item;
-            item.hidden = NO;
+            item.hidden = YES;
             break;
         }
     }
