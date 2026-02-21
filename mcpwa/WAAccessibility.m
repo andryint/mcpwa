@@ -1918,51 +1918,44 @@
                     foundMatchInResult = YES;
 
                     // Click the message result - this navigates directly to the message.
-                    // Strategy: try child AXButton first, then the result element itself.
-                    NSString *resultRole = [self roleOfElement:resultElement];
-                    [WALogger debug:@"navigateToChat: Result element role: '%@'", resultRole ?: @"nil"];
+                    // Use coordinate-based mouse click on the TEXT element (not the result
+                    // container center). Messages with link previews have a tall result element;
+                    // clicking the center lands on the link preview card and opens the link in
+                    // a browser. Clicking on the text area at the top navigates to the message.
+                    AXUIElementPerformAction(resultElement, CFSTR("AXScrollToVisible"));
+                    [NSThread sleepForTimeInterval:0.2];
 
-                    NSArray *buttons = [self findElementsIn:resultElement predicate:^BOOL(AXUIElementRef element, NSString *role, NSString *identifier) {
-                        return [role isEqualToString:@"AXButton"];
-                    } maxDepth:3];
-
-                    if (buttons.count > 0) {
-                        [WALogger debug:@"navigateToChat: Found %lu child buttons, clicking first", (unsigned long)buttons.count];
-                        AXUIElementPerformAction((__bridge AXUIElementRef)buttons[0], CFSTR("AXScrollToVisible"));
-                        clickedResult = [self pressElement:(__bridge AXUIElementRef)buttons[0]];
-                        [WALogger info:@"navigateToChat: Clicked child button: %@", clickedResult ? @"YES" : @"NO"];
-                    } else {
-                        // No child button — AXPress on non-button elements (AXGroup) silently fails
-                        // in Catalyst apps. Use coordinate-based mouse click at the element's center.
-                        [WALogger debug:@"navigateToChat: No child button, using mouse click (role: %@)", resultRole];
-                        AXUIElementPerformAction(resultElement, CFSTR("AXScrollToVisible"));
-                        [NSThread sleepForTimeInterval:0.2];
-
-                        NSRect frame = [self frameOfElement:resultElement];
-                        if (frame.size.width > 0 && frame.size.height > 0) {
-                            CGPoint center = CGPointMake(NSMidX(frame), NSMidY(frame));
-                            [WALogger debug:@"navigateToChat: Clicking at center (%.0f, %.0f) of frame (%.0f,%.0f,%.0fx%.0f)",
-                                center.x, center.y, frame.origin.x, frame.origin.y, frame.size.width, frame.size.height];
-
-                            // Re-activate WhatsApp right before the click — it must be frontmost
-                            // for kCGHIDEventTap mouse events to land on the correct window.
-                            [self activateWhatsApp];
-
-                            pid_t clickPid = self.whatsappPID;
-                            if (clickPid != 0) {
-                                clickedResult = [self clickAtPoint:center forProcess:clickPid];
-                                [WALogger info:@"navigateToChat: Mouse click at search result: %@", clickedResult ? @"YES" : @"NO"];
-                            }
-                        } else {
-                            // Frame not available, fall back to AXPress
-                            clickedResult = [self pressElement:resultElement];
-                            [WALogger info:@"navigateToChat: Pressed result element directly (fallback): %@", clickedResult ? @"YES" : @"NO"];
-                        }
+                    // Prefer clicking on the matched text element — it's in the safe
+                    // text area at the top of the result, away from link preview cards.
+                    NSRect clickFrame = [self frameOfElement:staticText];
+                    NSString *clickTargetDesc = @"text element";
+                    if (clickFrame.size.width <= 0 || clickFrame.size.height <= 0) {
+                        // Fall back to the top portion of the result element
+                        clickFrame = [self frameOfElement:resultElement];
+                        clickTargetDesc = @"result element (top)";
                     }
 
-                    // Release buttons
-                    for (id btn in buttons) {
-                        CFRelease((__bridge AXUIElementRef)btn);
+                    if (clickFrame.size.width > 0 && clickFrame.size.height > 0) {
+                        // Click at center-x but near the top of the frame to avoid link previews
+                        CGPoint clickPoint = CGPointMake(NSMidX(clickFrame),
+                                                         clickFrame.origin.y + MIN(20.0, clickFrame.size.height * 0.3));
+                        [WALogger debug:@"navigateToChat: Clicking %@ at (%.0f, %.0f) frame (%.0f,%.0f,%.0fx%.0f)",
+                            clickTargetDesc, clickPoint.x, clickPoint.y,
+                            clickFrame.origin.x, clickFrame.origin.y, clickFrame.size.width, clickFrame.size.height];
+
+                        // Re-activate WhatsApp right before the click — it must be frontmost
+                        // for kCGHIDEventTap mouse events to land on the correct window.
+                        [self activateWhatsApp];
+
+                        pid_t clickPid = self.whatsappPID;
+                        if (clickPid != 0) {
+                            clickedResult = [self clickAtPoint:clickPoint forProcess:clickPid];
+                            [WALogger info:@"navigateToChat: Mouse click at search result: %@", clickedResult ? @"YES" : @"NO"];
+                        }
+                    } else {
+                        // Frame not available, fall back to AXPress on the result element
+                        clickedResult = [self pressElement:resultElement];
+                        [WALogger info:@"navigateToChat: Pressed result element directly (fallback): %@", clickedResult ? @"YES" : @"NO"];
                     }
 
                     break;  // Found match in this result, stop checking text elements

@@ -235,30 +235,22 @@
             NSLog(@"Found MessageResult at position %ld (looking for %ld)", (long)resultIndex, (long)index);
             
             if (resultIndex == index) {
+                // Always click the parent result element, never drill into children.
+                // Messages with links contain child AXButton elements that represent
+                // the link/attachment — pressing those opens the link in a browser
+                // instead of navigating to the message in WhatsApp.
                 AXUIElementRef clickTarget = childElement;
-                NSArray *grandchildren = nil;  // Declare outside the if
 
                 NSString *role = [self getStringAttribute:kAXRoleAttribute fromElement:childElement];
-                NSLog(@"Element role: %@", role);
+                NSLog(@"Element role: %@, clicking result element directly", role);
 
-                if ([role isEqualToString:@"AXGroup"]) {
-                    grandchildren = [self getChildren:childElement];  // Stays alive
-                    NSLog(@"Group has %lu children", (unsigned long)grandchildren.count);
-                    
-                    if (grandchildren.count > 0) {
-                        clickTarget = (__bridge AXUIElementRef)grandchildren.firstObject;
-                        NSString *childRole = [self getStringAttribute:kAXRoleAttribute fromElement:clickTarget];
-                        NSLog(@"Using child element (role: %@) instead of Group", childRole);
-                    }
-                }
-                
                 // Debug: show available actions
                 CFArrayRef actions = NULL;
                 AXUIElementCopyActionNames(clickTarget, &actions);
                 NSLog(@"Actions on click target: %@", actions);
                 if (actions) CFRelease(actions);
-                
-                // Perform the click
+
+                // Perform the click on the parent result element
                 AXError error = AXUIElementPerformAction(clickTarget, kAXPressAction);
                 NSLog(@"AXPress result: %d (0 = success)", (int)error);
                 success = (error == kAXErrorSuccess);
