@@ -182,9 +182,10 @@
     // Enable clickable links
     textView.automaticLinkDetectionEnabled = NO;
     textView.delegate = self;  // Handle wasource:// link clicks
+    // Use minimal linkTextAttributes so per-character attributes from the
+    // markdown parser are preserved (e.g., warm brown for source references,
+    // blue for regular links). Only set the cursor here.
     [textView setLinkTextAttributes:@{
-        NSForegroundColorAttributeName: [NSColor linkColor],
-        NSUnderlineStyleAttributeName: @(NSUnderlineStyleSingle),
         NSCursorAttributeName: [NSCursor pointingHandCursor]
     }];
 

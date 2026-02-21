@@ -142,22 +142,12 @@
                             continue;
                         }
 
-                        NSDictionary *plainAttrs = @{
-                            NSFontAttributeName: lineFont,
-                            NSForegroundColorAttributeName: sourceColor
-                        };
-
-                        // Opening bracket
-                        [lineAttr appendAttributedString:[[NSAttributedString alloc] initWithString:@"[" attributes:plainAttrs]];
-
+                        // Render each source number as a self-contained [N] clickable link.
+                        // Multi-references like [2, 3] become [2],[3] — each fully clickable.
                         for (NSUInteger si = 0; si < sourceNumbers.count; si++) {
-                            if (si > 0) {
-                                // Comma separator
-                                [lineAttr appendAttributedString:[[NSAttributedString alloc] initWithString:@", " attributes:plainAttrs]];
-                            }
-                            // Clickable number
                             NSString *numStr = [sourceNumbers[si] stringValue];
                             NSURL *sourceURL = [NSURL URLWithString:[NSString stringWithFormat:@"wasource://%@", numStr]];
+                            NSString *fullRef = [NSString stringWithFormat:@"[%@]", numStr];
                             NSDictionary *linkAttrs = @{
                                 NSFontAttributeName: lineFont,
                                 NSForegroundColorAttributeName: sourceColor,
@@ -165,11 +155,8 @@
                                 NSLinkAttributeName: sourceURL,
                                 NSCursorAttributeName: [NSCursor pointingHandCursor]
                             };
-                            [lineAttr appendAttributedString:[[NSAttributedString alloc] initWithString:numStr attributes:linkAttrs]];
+                            [lineAttr appendAttributedString:[[NSAttributedString alloc] initWithString:fullRef attributes:linkAttrs]];
                         }
-
-                        // Closing bracket
-                        [lineAttr appendAttributedString:[[NSAttributedString alloc] initWithString:@"]" attributes:plainAttrs]];
 
                         i = textEnd + 1; // Skip past the ]
                         continue;
