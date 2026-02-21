@@ -120,6 +120,28 @@
                             [NSColor colorWithRed:0.85 green:0.75 blue:0.65 alpha:1.0] :
                             [NSColor colorWithRed:0.45 green:0.38 blue:0.32 alpha:1.0];
 
+                        // Check if this is a source list line: [N] at start of line followed by text
+                        // e.g., "[1] Chatbots [2025-12-15 22:12]"
+                        // In that case, make the entire line a single clickable link.
+                        BOOL isSourceListLine = (i == 0 && sourceNumbers.count == 1
+                            && textEnd + 1 < len && [line characterAtIndex:textEnd + 1] == ' ');
+
+                        if (isSourceListLine) {
+                            NSString *numStr = [sourceNumbers[0] stringValue];
+                            NSURL *sourceURL = [NSURL URLWithString:[NSString stringWithFormat:@"wasource://%@", numStr]];
+                            NSDictionary *linkAttrs = @{
+                                NSFontAttributeName: lineFont,
+                                NSForegroundColorAttributeName: sourceColor,
+                                NSUnderlineStyleAttributeName: @(NSUnderlineStyleSingle),
+                                NSLinkAttributeName: sourceURL,
+                                NSCursorAttributeName: [NSCursor pointingHandCursor]
+                            };
+                            // Render entire line as one clickable link
+                            [lineAttr appendAttributedString:[[NSAttributedString alloc] initWithString:line attributes:linkAttrs]];
+                            i = len; // Skip rest of line
+                            continue;
+                        }
+
                         NSDictionary *plainAttrs = @{
                             NSFontAttributeName: lineFont,
                             NSForegroundColorAttributeName: sourceColor

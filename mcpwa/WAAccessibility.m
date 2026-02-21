@@ -179,6 +179,89 @@
     return err == kAXErrorSuccess;
 }
 
+- (NSRect)frameOfElement:(AXUIElementRef)element {
+    NSRect frame = NSZeroRect;
+    if (!element) return frame;
+
+    CFTypeRef posValue = NULL;
+    CFTypeRef sizeValue = NULL;
+
+    AXError posErr = AXUIElementCopyAttributeValue(element, kAXPositionAttribute, &posValue);
+    AXError sizeErr = AXUIElementCopyAttributeValue(element, kAXSizeAttribute, &sizeValue);
+
+    [WALogger debug:@"frameOfElement: posErr=%d sizeErr=%d", posErr, sizeErr];
+
+    if (posErr == kAXErrorSuccess && sizeErr == kAXErrorSuccess) {
+        CGPoint pos;
+        CGSize size;
+        if (AXValueGetValue(posValue, kAXValueTypeCGPoint, &pos) &&
+            AXValueGetValue(sizeValue, kAXValueTypeCGSize, &size)) {
+            frame = NSMakeRect(pos.x, pos.y, size.width, size.height);
+            [WALogger debug:@"frameOfElement: pos=(%.1f, %.1f) size=(%.1f x %.1f)",
+                pos.x, pos.y, size.width, size.height];
+        } else {
+            [WALogger warn:@"frameOfElement: AXValueGetValue failed for pos or size"];
+        }
+    } else {
+        [WALogger warn:@"frameOfElement: failed to get position (err=%d) or size (err=%d)", posErr, sizeErr];
+    }
+
+    if (posValue) CFRelease(posValue);
+    if (sizeValue) CFRelease(sizeValue);
+    return frame;
+}
+
+- (BOOL)clickAtPoint:(CGPoint)point forProcess:(pid_t)pid {
+    if (pid == 0) {
+        [WALogger error:@"clickAtPoint: pid is 0, cannot click"];
+        return NO;
+    }
+
+    [WALogger debug:@"clickAtPoint: target=(%.1f, %.1f) pid=%d", point.x, point.y, pid];
+
+    // Check which app is frontmost before clicking
+    NSRunningApplication *frontApp = [[NSWorkspace sharedWorkspace] frontmostApplication];
+    [WALogger debug:@"clickAtPoint: frontmost app before click: '%@' (pid=%d, active=%d)",
+        frontApp.localizedName, frontApp.processIdentifier, frontApp.isActive];
+
+    // Check if WhatsApp window is at the click point (sanity check)
+    CGEventSourceRef source = CGEventSourceCreate(kCGEventSourceStateHIDSystemState);
+    if (!source) {
+        [WALogger error:@"clickAtPoint: CGEventSourceCreate failed"];
+        return NO;
+    }
+
+    CGEventRef mouseDown = CGEventCreateMouseEvent(source, kCGEventLeftMouseDown, point, kCGMouseButtonLeft);
+    CGEventRef mouseUp = CGEventCreateMouseEvent(source, kCGEventLeftMouseUp, point, kCGMouseButtonLeft);
+
+    if (!mouseDown || !mouseUp) {
+        [WALogger error:@"clickAtPoint: CGEventCreateMouseEvent failed (mouseDown=%p, mouseUp=%p)",
+            mouseDown, mouseUp];
+        if (mouseDown) CFRelease(mouseDown);
+        if (mouseUp) CFRelease(mouseUp);
+        CFRelease(source);
+        return NO;
+    }
+
+    [WALogger debug:@"clickAtPoint: posting mouseDown via kCGHIDEventTap"];
+    CGEventPost(kCGHIDEventTap, mouseDown);
+    [NSThread sleepForTimeInterval:0.1];
+    [WALogger debug:@"clickAtPoint: posting mouseUp via kCGHIDEventTap"];
+    CGEventPost(kCGHIDEventTap, mouseUp);
+
+    CFRelease(mouseDown);
+    CFRelease(mouseUp);
+    CFRelease(source);
+
+    // Wait and check if anything changed
+    [NSThread sleepForTimeInterval:0.5];
+    NSRunningApplication *frontAppAfter = [[NSWorkspace sharedWorkspace] frontmostApplication];
+    [WALogger debug:@"clickAtPoint: frontmost app after click: '%@' (pid=%d, active=%d)",
+        frontAppAfter.localizedName, frontAppAfter.processIdentifier, frontAppAfter.isActive];
+
+    return YES;
+}
+
 #pragma mark - Element Finding
 
 - (void)findElementsIn:(AXUIElementRef)root
@@ -1849,11 +1932,32 @@
                         clickedResult = [self pressElement:(__bridge AXUIElementRef)buttons[0]];
                         [WALogger info:@"navigateToChat: Clicked child button: %@", clickedResult ? @"YES" : @"NO"];
                     } else {
-                        // No child button — try pressing the result element directly
-                        [WALogger debug:@"navigateToChat: No child button, pressing result element directly (role: %@)", resultRole];
+                        // No child button — AXPress on non-button elements (AXGroup) silently fails
+                        // in Catalyst apps. Use coordinate-based mouse click at the element's center.
+                        [WALogger debug:@"navigateToChat: No child button, using mouse click (role: %@)", resultRole];
                         AXUIElementPerformAction(resultElement, CFSTR("AXScrollToVisible"));
-                        clickedResult = [self pressElement:resultElement];
-                        [WALogger info:@"navigateToChat: Pressed result element directly: %@", clickedResult ? @"YES" : @"NO"];
+                        [NSThread sleepForTimeInterval:0.2];
+
+                        NSRect frame = [self frameOfElement:resultElement];
+                        if (frame.size.width > 0 && frame.size.height > 0) {
+                            CGPoint center = CGPointMake(NSMidX(frame), NSMidY(frame));
+                            [WALogger debug:@"navigateToChat: Clicking at center (%.0f, %.0f) of frame (%.0f,%.0f,%.0fx%.0f)",
+                                center.x, center.y, frame.origin.x, frame.origin.y, frame.size.width, frame.size.height];
+
+                            // Re-activate WhatsApp right before the click — it must be frontmost
+                            // for kCGHIDEventTap mouse events to land on the correct window.
+                            [self activateWhatsApp];
+
+                            pid_t clickPid = self.whatsappPID;
+                            if (clickPid != 0) {
+                                clickedResult = [self clickAtPoint:center forProcess:clickPid];
+                                [WALogger info:@"navigateToChat: Mouse click at search result: %@", clickedResult ? @"YES" : @"NO"];
+                            }
+                        } else {
+                            // Frame not available, fall back to AXPress
+                            clickedResult = [self pressElement:resultElement];
+                            [WALogger info:@"navigateToChat: Pressed result element directly (fallback): %@", clickedResult ? @"YES" : @"NO"];
+                        }
                     }
 
                     // Release buttons
@@ -1885,6 +1989,33 @@
         CFRelease(window);
 
         if (clickedResult) {
+            // Check if the UI actually changed after the click
+            [NSThread sleepForTimeInterval:0.5];
+            AXUIElementRef postClickWindow = [self getMainWindow];
+            if (postClickWindow) {
+                // Check if search field still has text (meaning we're still in search mode)
+                AXUIElementRef searchField = [self findElementWithIdentifier:@"TokenizedSearchBar_TextView" inElement:postClickWindow];
+                if (searchField) {
+                    NSString *searchVal = [self valueOfElement:searchField];
+                    [WALogger debug:@"navigateToChat: POST-CLICK search field value: '%@' (empty means navigated away)",
+                        searchVal ?: @"<nil>"];
+                    CFRelease(searchField);
+                } else {
+                    [WALogger debug:@"navigateToChat: POST-CLICK search field not found (may have navigated to chat)"];
+                }
+
+                // Check if search results are still visible
+                NSArray *postClickResults = [self findElementsIn:postClickWindow predicate:^BOOL(AXUIElementRef element, NSString *role, NSString *identifier) {
+                    return [identifier isEqualToString:@"ChatListSearchView_MessageResult"];
+                } maxDepth:15];
+                [WALogger debug:@"navigateToChat: POST-CLICK message results still visible: %lu", (unsigned long)postClickResults.count];
+                for (id elem in postClickResults) {
+                    CFRelease((__bridge AXUIElementRef)elem);
+                }
+
+                CFRelease(postClickWindow);
+            }
+
             [WALogger info:@"navigateToChat: Successfully navigated to message via search"];
             return YES;
         }

@@ -98,6 +98,12 @@ typedef NS_ENUM(NSInteger, WAMessageDirection) {
 - (void)pressKey:(CGKeyCode)keyCode withFlags:(CGEventFlags)flags toProcess:(pid_t)pid;
 - (void)typeString:(NSString *)string toProcess:(pid_t)pid;
 
+/// Get the screen frame (position + size) of an accessibility element
+- (NSRect)frameOfElement:(AXUIElementRef)element;
+
+/// Simulate a mouse click at a screen coordinate, sent directly to a process (no focus stealing)
+- (BOOL)clickAtPoint:(CGPoint)point forProcess:(pid_t)pid;
+
 
 #pragma mark - Search Mode Detection
 

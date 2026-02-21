@@ -120,6 +120,9 @@
     // Navigate on background thread (WAAccessibility uses sleeps)
     dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
         WAAccessibility *wa = [WAAccessibility shared];
+
+        // Bring WhatsApp to foreground immediately — the user wants to see it
+        [wa activateWhatsApp];
         BOOL success = [wa navigateToChat:chatName nearDate:timeStart searchSnippet:searchSnippet];
         if (success) {
             [WALogger info:@"[Source Link] Successfully navigated to source [%ld] in chat '%@'",

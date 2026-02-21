@@ -47,9 +47,6 @@
             return;
         }
 
-        // Store sources for clickable reference lookup
-        self.lastSources = response.sources;
-
         // Remove the streaming bubble - we'll replace it with the final formatted message
         NSLog(@"[RAG UI] Removing streaming bubble: %@", self.streamingBubbleView);
         if (self.streamingBubbleView) {
@@ -67,13 +64,85 @@
 
         // Build the response message
         NSMutableString *responseText = [NSMutableString string];
+        NSString *answerText = response.answer ?: @"";
 
-        if (response.answer.length > 0) {
-            [responseText appendString:response.answer];
+        // Filter sources: only keep those actually referenced in the answer text.
+        // Also renumber them sequentially so there are no gaps.
+        NSArray<NSDictionary *> *allSources = response.sources;
+        NSMutableArray<NSDictionary *> *usedSources = [NSMutableArray array];
+        NSMutableDictionary<NSNumber *, NSNumber *> *oldToNewIndex = [NSMutableDictionary dictionary];
+
+        if (allSources.count > 0) {
+            // Scan the answer for referenced source numbers: [N] or [N, M]
+            NSMutableSet<NSNumber *> *referencedIndices = [NSMutableSet set];
+            NSRegularExpression *refRegex = [NSRegularExpression regularExpressionWithPattern:@"\\[(\\d+(?:,\\s*\\d+)*)\\]"
+                                                                                     options:0
+                                                                                       error:nil];
+            NSArray<NSTextCheckingResult *> *matches = [refRegex matchesInString:answerText
+                                                                        options:0
+                                                                          range:NSMakeRange(0, answerText.length)];
+            for (NSTextCheckingResult *match in matches) {
+                NSString *inner = [answerText substringWithRange:[match rangeAtIndex:1]];
+                for (NSString *part in [inner componentsSeparatedByString:@","]) {
+                    NSInteger num = [[part stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceCharacterSet]] integerValue];
+                    if (num > 0 && num <= (NSInteger)allSources.count) {
+                        [referencedIndices addObject:@(num)];
+                    }
+                }
+            }
+
+            // Build filtered list and old→new index mapping
+            NSInteger newIndex = 1;
+            for (NSInteger oldIndex = 1; oldIndex <= (NSInteger)allSources.count; oldIndex++) {
+                if ([referencedIndices containsObject:@(oldIndex)]) {
+                    [usedSources addObject:allSources[oldIndex - 1]];
+                    oldToNewIndex[@(oldIndex)] = @(newIndex);
+                    newIndex++;
+                }
+            }
+
+            NSLog(@"[RAG UI] Sources: %lu total, %lu referenced, %lu unused",
+                (unsigned long)allSources.count, (unsigned long)usedSources.count,
+                (unsigned long)(allSources.count - usedSources.count));
+
+            // Renumber references in the answer text (replace old indices with new ones)
+            if (usedSources.count < allSources.count && oldToNewIndex.count > 0) {
+                NSMutableString *remapped = [NSMutableString stringWithString:answerText];
+                // Process matches in reverse order to preserve ranges
+                for (NSTextCheckingResult *match in [[matches reverseObjectEnumerator] allObjects]) {
+                    NSRange fullRange = [match range];  // includes [ and ]
+                    NSString *inner = [remapped substringWithRange:[match rangeAtIndex:1]];
+                    NSMutableArray *newParts = [NSMutableArray array];
+                    BOOL anyChanged = NO;
+                    for (NSString *part in [inner componentsSeparatedByString:@","]) {
+                        NSString *trimmed = [part stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceCharacterSet]];
+                        NSInteger num = [trimmed integerValue];
+                        NSNumber *newNum = oldToNewIndex[@(num)];
+                        if (newNum) {
+                            [newParts addObject:[newNum stringValue]];
+                            if ([newNum integerValue] != num) anyChanged = YES;
+                        } else {
+                            [newParts addObject:trimmed];
+                        }
+                    }
+                    if (anyChanged) {
+                        NSString *replacement = [NSString stringWithFormat:@"[%@]", [newParts componentsJoinedByString:@", "]];
+                        [remapped replaceCharactersInRange:fullRange withString:replacement];
+                    }
+                }
+                answerText = remapped;
+            }
+        }
+
+        // Store filtered sources for clickable reference lookup (1-based, matching new indices)
+        self.lastSources = usedSources.count > 0 ? usedSources : allSources;
+
+        if (answerText.length > 0) {
+            [responseText appendString:answerText];
         }
 
         // Add sources if available
-        if (response.sources.count > 0) {
+        if (usedSources.count > 0) {
             [responseText appendString:@"\n\n**Sources:**\n"];
             NSInteger sourceIndex = 1;
 
@@ -87,7 +156,7 @@
                 }
             }
 
-            for (NSDictionary *source in response.sources) {
+            for (NSDictionary *source in usedSources) {
                 // RAG API returns: chat_name, time_start, chat_id, is_group, participants, search_snippet, etc.
                 NSString *chatName = [source[@"chat_name"] stringByReplacingOccurrencesOfString:@"_" withString:@" "] ?: @"Unknown";
                 NSString *timeStart = source[@"time_start"];
